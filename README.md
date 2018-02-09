@@ -5,5 +5,5 @@ The whole pipeline is:
 2. Correlation analysis to find out superpixels.
 3. Rank-1 svd to find out the temporal trace of superpixels.
 4. SPA to find pure superpixel. This is implemented by a matlab function "FastSepNMF.m".  You need to run spa.m when doing this.
-5. Order pure superpixel according to brightness to distinguish between neurons and background components, also for easy visualization.
+Now you can get the temporal traces for all the pure superpixels!
 
