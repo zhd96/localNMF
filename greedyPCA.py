@@ -28,7 +28,7 @@ import tools as tools_
 
 
 def mean_confidence_interval(data,
-                            confidence=0.90,
+                            confidence=0.99,
                             one_sided=False):
     """
     Compute mean confidence interval (CI)
@@ -352,11 +352,14 @@ def denoise_patch(M,
                   greedy=True,
                   fudge_factor=0.99,
                   mean_th=None,
-                  mean_th_factor=1.15,
+                  mean_th_factor=2,
+                  mean_th_factor2=1.15,
                   U_update=False,
                   min_rank=1,
                   verbose=False,
-                  pca_method='vanilla'):
+                  pca_method='vanilla',
+                  max_num_components=50,
+                  max_num_iters=5):
     """
     Given single patch, denoise it as outlined by parameters
 
@@ -430,8 +433,8 @@ def denoise_patch(M,
             maxlag=maxlag,tsub=tsub, noise_norm=noise_norm,iterate=iterate,
             confidence=confidence, corr=corr,kurto=kurto,tfilt=tfilt,tfide=tfide,
             mean_th=mean_th, greedy=greedy,fudge_factor=fudge_factor,
-            mean_th_factor=mean_th_factor, U_update=U_update,min_rank=min_rank,
-            plot_en=plot_en,verbose=verbose,dims=dimsM,pca_method=pca_method)
+            mean_th_factor=mean_th_factor, mean_th_factor2=mean_th_factor2,U_update=U_update,min_rank=min_rank,
+            plot_en=plot_en,verbose=verbose,dims=dimsM,pca_method=pca_method,max_num_components=max_num_components,max_num_iters=max_num_iters)
     Yd = Yd.reshape(dimsM, order='F')
     
     case1 = ~np.isnan(vtids[0,:])
@@ -593,8 +596,8 @@ def greedy_component_denoiser(Y,
                                 U_update=False,
                                 pca_method='vanilla',
                                 final_update=True,
-                                max_num_iters=20,
-                                max_num_components=20,
+                                max_num_iters=5,
+                                max_num_components=50,
                                 solver='ECOS',
                                 constraint_segmented=False # call trefide
                                 ):
@@ -853,6 +856,7 @@ def denoise_components(data_all,
                        mean_th=None,
                        greedy=True,
                        mean_th_factor=1.,
+                       mean_th_factor2 = 1.15,
                        p=1.,
                        fudge_factor=1.,
                        plot_en=False,
@@ -860,7 +864,9 @@ def denoise_components(data_all,
                        U_update=False,
                        min_rank=0,
                        pca_method='vanilla',
-                       detrend=False):
+                       detrend=False,
+                       max_num_components=50,
+                       max_num_iters=5):
     """
     Compress array data_all as determined by parameters.
 
@@ -997,7 +1003,19 @@ def denoise_components(data_all,
     # Plot temporal correlations
     uplot.plot_vt_cov(Vt,keep1,maxlag) if plot_en else 0
 
-    # If no components to store, return block as it is
+    # If no components to store, change to lower confidence level
+    if np.all(keep1 == np.nan):
+        print("change to lower confidence level")
+        mean_th /= mean_th_factor;
+        mean_th_factor = mean_th_factor2;
+        mean_th *= mean_th_factor;
+        ctid = choose_rank(Vt, maxlag=maxlag, iterate=iterate,
+            confidence=confidence, corr=corr, kurto=kurto,
+            mean_th=mean_th)
+        keep1 = np.where(np.logical_or(ctid[0, :] == 1, ctid[1, :] == 1))[0]
+        uplot.plot_vt_cov(Vt,keep1,maxlag) if plot_en else 0
+
+    # If still no components to store, return block as it is
     if np.all(keep1 == np.nan):
         if min_rank ==0:
             Yd = np.zeros(data.T.shape)
@@ -1027,8 +1045,9 @@ def denoise_components(data_all,
         U, Vt = greedy_component_denoiser(data.T, U, Vt, dims=dims,
                 fudge_factor=fudge_factor, maxlag=maxlag,
                 confidence=confidence, corr=corr,
-                kurto=kurto, mean_th=mean_th/mean_th_factor,U_update=U_update,
-                plot_en=plot_en,verbose=verbose,pca_method=pca_method)
+                kurto=kurto, mean_th=mean_th*mean_th_factor2/mean_th_factor,U_update=U_update,
+                plot_en=plot_en,verbose=verbose,pca_method=pca_method,max_num_iters=max_num_iters,
+                max_num_components=max_num_components)
         ctid[0,np.arange(Vt.shape[0])]=1
         #except:
         #    print('\tERROR: Greedy solving failed, keeping %d parameters'%
