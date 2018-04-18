@@ -8,8 +8,8 @@ from sklearn.utils.extmath import randomized_svd
 from sklearn.decomposition.dict_learning import dict_learning
 import matplotlib.pyplot as plt
 
-import spatial_filtering as sp_filters
-#import tools as tools
+#import spatial_filtering as #
+import tools as tools
 
 
 from sklearn import preprocessing
@@ -19,13 +19,42 @@ import time
 import concurrent
 import multiprocessing
 import itertools
-import time
+import random
 
 import trefide
 import util_plot as uplot
 import tools as tools_
 
+np.random.seed(0);
+random.seed(0);
 
+
+def noise_estimator(Y,range_ff=[0.25,0.5],method='logmexp'):
+    dims = Y.shape
+    if len(dims)>2:
+        V_hat = Y.reshape((np.prod(dims[:2]),dims[2]),order='F')
+    else:
+        V_hat = Y.copy()
+    sns = []
+    for i in range(V_hat.shape[0]):
+        ff, Pxx = sp.signal.welch(V_hat[i,:],nperseg=min(256,dims[-1]))
+        ind1 = ff > range_ff[0]
+        ind2 = ff < range_ff[1]
+        ind = np.logical_and(ind1, ind2)
+        #Pls.append(Pxx)
+        #ffs.append(ff)
+        Pxx_ind = Pxx[ind]
+        sn = {
+            'mean': lambda Pxx_ind: np.sqrt(np.mean(np.divide(Pxx_ind, 2))),
+            'median': lambda Pxx_ind: np.sqrt(np.median(np.divide(Pxx_ind, 2))),
+            'logmexp': lambda Pxx_ind: np.sqrt(np.exp(np.mean(np.log(np.divide(Pxx_ind, 2)))))
+        }[method](Pxx_ind)
+        sns.append(sn)
+    
+    sns = np.asarray(sns)
+    if len(dims)>2:
+        sns = sns.reshape(dims[:2],order='F')
+    return sns
 
 def mean_confidence_interval(data,
                             confidence=0.99,
@@ -428,7 +457,6 @@ def denoise_patch(M,
     """
     dimsM = M.shape
     start = time.time()
-
     Yd, vtids = denoise_components(M.reshape((np.prod(dimsM[:2]),dimsM[2]),order='F'),
             maxlag=maxlag,tsub=tsub, noise_norm=noise_norm,iterate=iterate,
             confidence=confidence, corr=corr,kurto=kurto,tfilt=tfilt,tfide=tfide,
@@ -521,7 +549,7 @@ def greedy_temporal_denoiser(Y,
                         lagrange_scaled=True)
             else:
                 # deprecated
-                noise_std_ = sp_filters.noise_estimator(V_[np.newaxis,:],
+                noise_std_ = noise_estimator(V_[np.newaxis,:],
                         method='logmexp')
                 if fudge_factor is not None:
                     noise_std_ *=fudge_factor
@@ -701,7 +729,7 @@ def greedy_component_denoiser(Y,
                      for idx in range(num_components)]
             V_TF, region_indices,lambdas_ = map(np.asarray, zip(*outs_))
         else:
-            noise_std_ = sp_filters.noise_estimator(V_hat,method='logmexp')
+            noise_std_ = noise_estimator(V_hat,method='logmexp')
             noise_std_ *= fudge_factor
             print("noise")
             print(noise_std_)
@@ -1031,7 +1059,7 @@ def denoise_components(data_all,
 
     # Denoise each temporal component
     if tfide:
-        noise_levels = sp_filters.noise_estimator(Vt)
+        noise_levels = noise_estimator(Vt)
         Vt = trefide.denoise(Vt, stdvs = noise_levels)
 
     if tfide and (tfilt or tsub > 1):
@@ -1082,7 +1110,7 @@ def c_l1tf_v_hat(v,diff,
     T = len(v)
     v_hat = cp.Variable(T)
 
-    if np.abs(sigma)<=1e-3:
+    if np.abs(sigma/v.max())<=1e-3:
         print('Do not denoise (high SNR: noise_level=%.3e)'%
                 sigma) if verbose else 0
         return v , 0
