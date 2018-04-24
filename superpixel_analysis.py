@@ -767,18 +767,28 @@ def ls_solve_ac(X, U, V, mask=None, hals=False, beta_LS=None):
 		K = X.shape[1];
 		if beta_LS is None:
 			beta_LS = np.zeros([K,V.shape[0]]);
+		UK = np.matmul(np.matmul(X.T, U), V.T);
+		VK = np.matmul(X.T, X);
+		aa = np.diag(VK);
+		beta_LS = beta_LS.T;
 		for ii in range(K):
 			#ind = np.ones((K,), bool)
 			#ind[ii] = False
 			#beta_LS[:,ii] = np.maximum(0, np.matmul(np.matmul(X[:,[ii]].T,np.hstack((U,-np.delete(X,ii,axis=1)))), np.hstack((V,beta_LS[:,ind])).T)/(X[:,ii]**2).sum());
 			#beta_LS[:,ii] = np.maximum(0, np.matmul(np.matmul(X[:,[ii]].T,np.hstack((U,-np.delete(X,ii,axis=1)))), np.hstack((V,np.delete(beta_LS,ii,axis=1))).T)/(X[:,ii]**2).sum());
-			beta_LS[:,ii] = np.maximum(0, np.matmul(np.matmul(X[:,[ii]].T,U), V.T)/(X[:,ii]**2).sum());
-		beta_LS = beta_LS.T;	
+			#beta_LS[:,ii] = np.maximum(0, np.matmul(np.matmul(X[:,[ii]].T,U), V.T)/(X[:,ii]**2).sum());
+			if mask is None:
+				beta_LS[[ii],:] = np.maximum(0, beta_LS[[ii],:] + ((UK[[ii],:] - np.matmul(VK[[ii],:],beta_LS))/aa[ii]));
+			else:
+				ind = (mask[ii,:]>0);
+				beta_LS[[ii],ind] = np.maximum(0, beta_LS[[ii],ind] + ((UK[[ii],ind] - np.matmul(VK[[ii],:],beta_LS[:,ind]))/aa[ii]));
+		#beta_LS = beta_LS.T;
 	else:
 		beta_LS = np.maximum(0, np.matmul(np.matmul(np.matmul(np.linalg.inv(np.matmul(X.T, X)), X.T), U), V.T));
-		#beta_LS = np.matmul(np.matmul(np.linalg.inv(np.matmul(X.T, X)), X.T), ind*Y);
-	if mask is not None:
-		beta_LS = beta_LS*mask;
+		#beta_LS = np.maximum(0, np.matmul(np.matmul(np.linalg.solve(np.matmul(X.T, X), X.T), U), V.T));
+		#beta_LS = np.maximum(0, np.matmul(np.linalg.lstsq(X,U,rcond=None)[0], V.T));
+		if mask is not None:
+			beta_LS = beta_LS*mask;
 	return beta_LS
 
 def ls_solve_ff(X, U, V, mask):
@@ -1017,6 +1027,7 @@ def update_AC_l2(U, V, normalize_factor, a, c, patch_size, corr_th_fix,
 	mask_a = (a > 0)*1;
 	corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c).reshape(patch_size[0],patch_size[1],-1,order="F");
 	mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane,max_allow_neuron_size=max_allow_neuron_size);
+	a = a*mask_a;
 
 	if sum(mask_a.sum(axis=0) == 0):
 		print("zero mask a!");
@@ -1035,15 +1046,12 @@ def update_AC_l2(U, V, normalize_factor, a, c, patch_size, corr_th_fix,
 	for iters in range(maxiter):
 		start_time = time.time();
 		try:
-			temp = ls_solve_ac(np.hstack((c,f)), V, U, mask_ab.T, hals, np.hstack((a,b))).T;
+			temp = ls_solve_ac(np.hstack((c,f)), V, U, mask=mask_ab.T, hals=hals, beta_LS=np.hstack((a,b))).T;
 			a = temp[:,:-1];
 			#a = temp[:,:-1];
 			#b = temp[:,[-1]];
 			#a = ls_solve_a(c, V, U, mask_a.T).T;
 			b = np.maximum(0, (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
-			#residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
-			#res[iters] = np.linalg.norm(residual, "fro");
-			#print(res[iters]);
 		except:
 			print("zero c!");
 			pos = np.where(c.sum(axis=0) == 0)[0];
@@ -1066,7 +1074,7 @@ def update_AC_l2(U, V, normalize_factor, a, c, patch_size, corr_th_fix,
 			#res[iters] = np.linalg.norm(residual, "fro");
 			#print(res[iters]);	
 		try:
-			c = ls_solve_ac(a, np.hstack((U,b)), np.hstack((V,-1*f)), None, hals, c).T;
+			c = ls_solve_ac(a, np.hstack((U,b)), np.hstack((V,-1*f)), mask=None, hals=hals, beta_LS=c).T;
 			#c = c-c.min(axis=0,keepdims=True);
 			b = np.maximum(0, (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
 		except:
@@ -1249,6 +1257,7 @@ def update_AC_bg_l2(U, V, normalize_factor, a, c, patch_size, corr_th_fix,
 	mask_a = (a > 0)*1;
 	corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c).reshape(patch_size[0],patch_size[1],-1,order="F");
 	mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane,max_allow_neuron_size=max_allow_neuron_size);
+	a = a*mask_a;
 
 	if sum(mask_a.sum(axis=0) == 0):
 		print("zero mask a!");
@@ -1457,7 +1466,7 @@ def superpixel_initialization(Yd, cut_off_point=0.9, length_cut=10, th=2, num_pl
 
 
 def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pass_num=2, residual_cut = 0.43,
-					corr_th_fix=0.4, max_allow_neuron_size=0.2, merge_corr_thr=0.5, merge_overlap_thr=0.8, num_plane=1, patch_size=[100,100],
+					corr_th_fix=0.4, max_allow_neuron_size=0.3, merge_corr_thr=0.5, merge_overlap_thr=0.8, num_plane=1, patch_size=[100,100],
 					plot_en=False, TF=False, fudge_factor=1, text=True, bg=False, max_iter=21, max_iter_fin=41, 
 					hals=False, low_rank=False):
 
@@ -1642,6 +1651,82 @@ def match_comp(rlt,rlt_lasso_Ydc, rlt_lasso_Yrawc,th):
 	order_Yraw = np.asarray(order_Yraw,dtype=int);
 	return order_Yd, order_Yraw
 
+def match_comp_gt(rlt_gt, rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc,th):
+	K = rlt_gt.shape[1];
+	order_Ys = np.zeros([K]);
+	order_Yd = np.zeros([K])
+	order_Yraw = np.zeros([K])
+	for ii in range(K):
+		temp0 = vcorrcoef2(rlt.T, rlt_gt[:,ii]);
+		temp = vcorrcoef2(rlt_lasso_Ydc.T, rlt_gt[:,ii]);
+		temp2 = vcorrcoef2(rlt_lasso_Yrawc.T, rlt_gt[:,ii]);
+
+		if temp0.max() > th:
+			order_Ys[ii] = int(np.argmax(temp0));
+			#if ii == K-1:
+			#	order_Ys[ii] = 13;
+		else:
+			order_Ys[ii] = np.nan;		
+		if temp.max() > th:
+			order_Yd[ii] = int(np.argmax(temp));
+		else:
+			order_Yd[ii] = np.nan;
+		if temp2.max() > th:
+			order_Yraw[ii] = int(np.argmax(temp2));
+		else:
+			order_Yraw[ii] = np.nan;
+	order_Ys = np.asarray(order_Ys,dtype=int);
+	order_Yd = np.asarray(order_Yd,dtype=int);
+	order_Yraw = np.asarray(order_Yraw,dtype=int);
+	return order_Ys, order_Yd, order_Yraw
+
+def match_comp_gt_debug(rlt_gt, rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc,rlt_gta, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
+	K = rlt_gt.shape[1];
+	order_Ys = np.zeros([K]);
+	order_Yd = np.zeros([K])
+	order_Yraw = np.zeros([K])
+	for ii in range(K):
+		temp0 = vcorrcoef2(rlt.T, rlt_gt[:,ii]);
+		temp = vcorrcoef2(rlt_lasso_Ydc.T, rlt_gt[:,ii]);
+		temp2 = vcorrcoef2(rlt_lasso_Yrawc.T, rlt_gt[:,ii]);
+		pos0 = np.argsort(-temp0)[:sum(temp0 > th)];
+		pos = np.argsort(-temp)[:sum(temp > th)];
+		pos2 = np.argsort(-temp2)[:sum(temp2 > th)];
+
+		if len(pos0)>0:
+			spa_temp0 = np.where(np.matmul(rlt_gta[:,[ii]].T, rlt_a[:,pos0])>0)[1][0];
+			if isinstance(spa_temp0, np.int64):
+				#print(int(pos0[spa_temp0]));
+				order_Ys[ii] = int(pos0[spa_temp0]);
+			else:
+				order_Ys[ii] = np.nan;
+			#if ii == K-1:
+			#	order_Ys[ii] = 13;
+		else:
+			order_Ys[ii] = np.nan;
+
+		if len(pos)>0:
+			spa_temp = np.where(np.matmul(rlt_gta[:,[ii]].T, rlt_lasso_Yda[:,pos])>0)[1][0];
+			if isinstance(spa_temp, np.int64):
+				order_Yd[ii] = int(pos[spa_temp]);
+			else:
+				order_Yd[ii] = np.nan;
+		else:
+			order_Yd[ii] = np.nan;
+
+		if len(pos2)>0:
+			spa_temp2 = np.where(np.matmul(rlt_gta[:,[ii]].T, rlt_lasso_Yrawa[:,pos2])>0)[1][0];
+			if isinstance(spa_temp2, np.int64):
+				order_Yraw[ii] = int(pos2[spa_temp2]);
+			else:
+				order_Yraw[ii] = np.nan;
+		else:
+			order_Yraw[ii] = np.nan;
+	order_Ys = np.asarray(order_Ys,dtype=int);
+	order_Yd = np.asarray(order_Yd,dtype=int);
+	order_Yraw = np.asarray(order_Yraw,dtype=int);
+	return order_Ys, order_Yd, order_Yraw
+
 def clip_data(rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
 	a_out = np.percentile(rlt_a,th,axis=0);
 	a_lasso_den_out = np.percentile(rlt_lasso_Yda,th,axis=0);
@@ -1659,6 +1744,29 @@ def clip_data(rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
 		if a_lasso_raw_out[ii] >0:
 			a_lasso_raw[:,ii] = np.clip(rlt_lasso_Yrawa[:,ii],0,a_lasso_raw_out[ii]);
 	return a, a_lasso_den, a_lasso_raw
+
+def clip_data_gt(rlt_gta, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
+	a_gt_out = np.percentile(rlt_gta,th,axis=0);
+	a_out = np.percentile(rlt_a,th,axis=0);
+	a_lasso_den_out = np.percentile(rlt_lasso_Yda,th,axis=0);
+	a_lasso_raw_out = np.percentile(rlt_lasso_Yrawa,th,axis=0);
+	a_gt = rlt_gta.copy();
+	a = rlt_a.copy();
+	a_lasso_den = rlt_lasso_Yda.copy();
+	a_lasso_raw = rlt_lasso_Yrawa.copy();
+	for ii in range(a_gt.shape[1]):
+		if a_gt_out[ii] > 0:
+			a_gt[:,ii] = np.clip(rlt_gta[:,ii],0,a_gt_out[ii]);	
+	for ii in range(a.shape[1]):
+		if a_out[ii] > 0:
+			a[:,ii] = np.clip(rlt_a[:,ii],0,a_out[ii]);
+	for ii in range(a_lasso_den.shape[1]):
+		if a_lasso_den_out[ii] >0:
+			a_lasso_den[:,ii] = np.clip(rlt_lasso_Yda[:,ii],0,a_lasso_den_out[ii]);
+	for ii in range(a_lasso_raw.shape[1]):
+		if a_lasso_raw_out[ii] >0:
+			a_lasso_raw[:,ii] = np.clip(rlt_lasso_Yrawa[:,ii],0,a_lasso_raw_out[ii]);
+	return a_gt, a, a_lasso_den, a_lasso_raw
 
 def pure_superpixel_compare_plot(connect_mat_1, unique_pix, pure_pix, text=False):
 	scale = np.maximum(1, (connect_mat_1.shape[1]/connect_mat_1.shape[0]));
@@ -1914,32 +2022,68 @@ def spatial_compare_nmf_plot(a, a_lasso_den, a_lasso_raw, order_Yd, order_Yraw, 
 	for ii in range(num):
 		ax0=plt.subplot(num,3,3*ii+1);
 		img0=plt.imshow(a[:,ii].reshape(patch_size,order="F"),cmap='jet');
-		plt.ylabel(str(ii+1),fontsize=15,fontweight="bold");
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
 		if ii==0:
 			plt.title("Our method",fontweight="bold",fontsize=15);
-		divider = make_axes_locatable(ax0)
-		cax = divider.append_axes("right", size="5%", pad=0.1)
-		plt.colorbar(img0, cax=cax,orientation='vertical',spacing='uniform')
 
 		ax1=plt.subplot(num,3,3*ii+2);
 		if ii==0:
 			plt.title("Sparse nmf on denoised data",fontweight="bold",fontsize=15);		
 		if order_Yd[ii]>=0:
 			img1=plt.imshow(a_lasso_den[:,order_Yd[ii]].reshape(patch_size,order="F"),cmap='jet');
-			plt.ylabel(str(order_Yd[ii]+1),fontsize=15,fontweight="bold");
-			divider = make_axes_locatable(ax1)
-			cax = divider.append_axes("right", size="5%", pad=0.1)
-			plt.colorbar(img1, cax=cax,orientation='vertical',spacing='uniform')
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
 
 		ax2=plt.subplot(num,3,3*ii+3);
 		if ii==0:
 			plt.title("Sparse nmf on raw data",fontweight="bold",fontsize=15);					
 		if order_Yraw[ii]>=0:
 			img2=plt.imshow(a_lasso_raw[:,order_Yraw[ii]].reshape(patch_size,order="F"),cmap='jet');
-			plt.ylabel(str(order_Yraw[ii]+1),fontsize=15,fontweight="bold");
-			divider = make_axes_locatable(ax2)
-			cax = divider.append_axes("right", size="5%", pad=0.1)
-			plt.colorbar(img2, cax=cax,orientation='vertical',spacing='uniform')			
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+
+	plt.tight_layout()
+	plt.show()
+	return fig
+
+def spatial_compare_nmf_gt_plot(a_gt, a, a_lasso_den, a_lasso_raw, order_Ys, order_Yd, order_Yraw, patch_size):
+	num = a_gt.shape[1];
+	scale = np.maximum(1, (patch_size[1]/patch_size[0]));
+	fig = plt.figure(figsize=(16*scale,4*num));
+
+	for ii in range(num):
+		ax00=plt.subplot(num,4,4*ii+1);
+		img00=plt.imshow(a_gt[:,ii].reshape(patch_size,order="F"),cmap='jet');
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+		if ii==0:
+			plt.title("Ground truth",fontweight="bold",fontsize=15);
+
+		ax0=plt.subplot(num,4,4*ii+2);
+		if order_Ys[ii]>=0:
+			img0=plt.imshow(a[:,order_Ys[ii]].reshape(patch_size,order="F"),cmap='jet');
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+		if ii==0:
+			plt.title("Our method",fontweight="bold",fontsize=15);
+
+		ax1=plt.subplot(num,4,4*ii+3);
+		if ii==0:
+			plt.title("Sparse nmf on denoised data",fontweight="bold",fontsize=15);		
+		if order_Yd[ii]>=0:
+			img1=plt.imshow(a_lasso_den[:,order_Yd[ii]].reshape(patch_size,order="F"),cmap='jet');
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+
+		ax2=plt.subplot(num,4,4*ii+4);
+		if ii==0:
+			plt.title("Sparse nmf on raw data",fontweight="bold",fontsize=15);					
+		if order_Yraw[ii]>=0:
+			img2=plt.imshow(a_lasso_raw[:,order_Yraw[ii]].reshape(patch_size,order="F"),cmap='jet');
+		plt.axis('off')
+		plt.tick_params(axis='both', left='off', top='off', right='off', bottom='off', labelleft='off', labeltop='off', labelright='off', labelbottom='off')
+
 	plt.tight_layout()
 	plt.show()
 	return fig
@@ -2130,5 +2274,16 @@ def vanilla_nmf_multi_lasso(y0, num_component, maxiter, tol, fudge_factor=1, c_p
 	if iters > 0:
 		print(abs(res[iters] - res[iters-1])/res[iters-1]);
 	return a, c, res
+
+
+def sim_noise(dims, noise_source):
+	np.random.seed(0);
+	N = np.prod(dims);
+	noise_source = noise_source.reshape(np.prod(noise_source.shape), order="F");
+	random_indices = np.random.randint(0, noise_source.shape[0], size=N);
+	noise_sim = noise_source[random_indices].reshape(dims,order="F");
+	return noise_sim
+
+
 
 
