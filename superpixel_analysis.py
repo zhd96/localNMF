@@ -931,7 +931,7 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero c!", plot_en);
 		b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
 
-		if update_after and (iters % update_after == 0):
+		if update_after and ((iters+1) % update_after == 0):
 			corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
 			rlt = merge_components(a,c,corr_img_all,U, V, normalize_factor,num_list,patch_size,merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr,plot_en=plot_en);
 			flag = isinstance(rlt, int);
@@ -1029,7 +1029,7 @@ def update_AC_bg_l2(U, V, normalize_factor, a, c, b, ff, fb, patch_size, corr_th
 		ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), mask=None).T;
 		b = np.maximum(0, b);
 
-		if update_after and (iters % update_after == 0):
+		if update_after and ((iters+1) % update_after == 0):
 			corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
 			rlt = merge_components(a,c,corr_img_all,U, V, normalize_factor,num_list,patch_size,merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr,plot_en=plot_en);
 			flag = isinstance(rlt, int);
