@@ -442,119 +442,42 @@ def find_superpixel_3d(Yt, num_plane, cut_off_point, length_cut, eight_neighbour
 	return connect_mat_1, idx-1, comps, permute_col
 
 
-def spatial_temporal_ini(Yt, comps, idx, length_cut, method='svd', maxiter=5, whole_data=True, bg=False):
+def spatial_temporal_ini(Yt, comps, idx, length_cut, bg=False):
 	"""
 	Find spatial and temporal initialization for each superpixel in Yt.  
 
-	Parameters:
-	----------------
-	Yt: 3d np.darray, dimension d1 x d2 x T
-		thresholded data
-	comps: list, length = number of superpixels
-		position of each superpixel
-	idx: double scalar
-		number of superpixels
-	length_cut: double scalar
-		length threshold
-	method: string, "svd" or "iterate"
-		"svd" is to do rank-1 svd for each superpixel. Default value is "svd".
-		"iterate" adds background component b(x), and iterate sereval times to find rank-1 factorization of each superpixel
-	maxiter: int scalar
-		maximum number of iteration of method: iterate
-	whole_data: Boolean
-		Use whole data if True or just above threshold data to do initilization.  Default is True.
-
-	Return:
-	----------------
-	V_mat: 2d np.darray, dimension T x number of superpixel
-		temporal initilization
-	U_mat: 2d np.darray, dimension (d1*d2) x number of superpixel
-		spatial initilization
-	B_mat: 2d np.darray, dimension (d1*d2) x 1
-		background initilization.  Zero matrix if choose "svd" method.
 	""" 
 
 	dims = Yt.shape;
 	T = dims[2];
 	Yt_r= Yt.reshape(np.prod(dims[:2]),T,order = "F");
 	ii = 0;
-	maxiter=5;
 	U_mat = np.zeros([np.prod(dims[:2]),idx]);
-	B_mat = np.zeros([np.prod(dims[:2]),idx]);
 	V_mat = np.zeros([T,idx]);
 	
-	if method == 'svd':
-		for comp in comps:
-			if(len(comp) > length_cut):
-				y_temp = Yt_r[list(comp),:];
-				model = NMF(n_components=1, init='custom');
-				U_mat[list(comp),ii] = model.fit_transform(y_temp, W=y_temp.mean(axis=1,keepdims=True), 
-											H = y_temp.mean(axis=0,keepdims=True))[:,0];
-				V_mat[:,ii] = model.components_;
-				ii = ii+1;
-	elif method == 'iterate':
-		for comp in comps:
-			if(len(comp) > length_cut):
-				y_temp = Yt_r[list(comp),:];
-				#unique_t = np.unique(np.where(y_temp > 0)[1]);
-				b = np.median(y_temp, axis=1, keepdims=True);
-				_, _, c = np.linalg.svd(y_temp - b, full_matrices=False)
-				c = c[0,:].reshape(y_temp.shape[1],1);
-				if (c[np.where(abs(c)==abs(c).max())[0]] < 0):
-				    c=-1*c;
-				c = np.maximum(0, c);
-				a = np.zeros([len(comp),1]);
-				f = np.ones([y_temp.shape[1],1]);
-	
-				mask_ab = np.ones([a.shape[0],2]);
-				mask_c = np.ones([c.shape[0],1]);
-	
-				if whole_data:
-				    ind = np.ones(y_temp.shape);
-				else:
-				    ind = (y_temp > 0);
-				y_temp = y_temp*ind; ########### in case y0 doesn't satisfy sub-threshold data = 0 ##############
-	
-				for jj in range(maxiter):
-				    temp = ls_solve(np.hstack((c,f)), y_temp.T, mask_ab.T, ind.T).T;
-				    a = temp[:,:-1];
-				    b = temp[:,[-1]];
-				    c = ls_solve(a, y_temp-b, mask_c.T, ind).T;
-	
-				U_mat[[list(comp)],[ii]] = a.T;
-				B_mat[[list(comp)],[ii]] = b.T;
-				V_mat[:,[ii]] = c;
-				ii = ii+1;
+	for comp in comps:
+		if(len(comp) > length_cut):
+			y_temp = Yt_r[list(comp),:];
+			model = NMF(n_components=1, init='custom');
+			U_mat[list(comp),ii] = model.fit_transform(y_temp, W=y_temp.mean(axis=1,keepdims=True), 
+										H = y_temp.mean(axis=0,keepdims=True))[:,0];
+			V_mat[:,ii] = model.components_;
+			ii = ii+1;
+
 	if bg:
 		bg_comp_pos = np.where(U_mat.sum(axis=1) == 0)[0];
 		y_temp = Yt_r[bg_comp_pos,:];
+		bg_u = np.zeros([Yt_r.shape[0],bg]);
 		y_temp = y_temp - y_temp.mean(axis=1,keepdims=True);
-		#a, b, c = np.linalg.svd(y_temp,full_matrices=False);
-		#bg_v = c[:bg,:].T;
-		#bg_v = bg_v - bg_v.mean(axis=0,keepdims=True);
 		svd = TruncatedSVD(n_components=bg, n_iter=7, random_state=0);
-		bg_v = svd.fit(y_temp).components_.T;
+		bg_u[bg_comp_pos,:] = svd.fit_transform(y_temp);
+		bg_v = svd.components_.T;
 		bg_v = bg_v - bg_v.mean(axis=0,keepdims=True);
 	else:
 		bg_v = None;
+		bg_u = None;
 
-	return V_mat, U_mat, bg_v, B_mat
-
-#def vcorrcoef(X,Y):
-#	"""
-#	Calculate correlation between X array and Y vector.
-#
-#	Parameters:
-#	----------------
-#	X: 2d np.darray, dimension d1 x T
-#	Y: 2d np.darray, dimension d2 x T
-#
-#	Return:
-#	----------------
-#	r: 2d np.darray, dimension d1 x d2
-#	correlation matrix
-#	""" 
-#	return np.corrcoef(X, Y)[:X.shape[0], X.shape[0]:]
+	return V_mat, U_mat, bg_v, bg_u
 
 def vcorrcoef(U, V, c):
 	temp = (c - c.mean(axis=0,keepdims=True));
@@ -661,7 +584,7 @@ def fast_sep_nmf(M, r, th, normalize=1):
 	#	coef_rank[:,ii] = [x for _,x in sorted(zip(len(pure_pixels) - ss.rankdata(coef[:,ii]), pure_pixels))];
 	return pure_pixels #, coef, coef_rank
 
-def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_mat, V_mat, more=False, low_rank=False):
+def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_mat, V_mat, more=False, low_rank=False, hals=False):
 	"""
 	Get some needed variables for the successive nmf iterations.
 
@@ -738,7 +661,10 @@ def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_ma
 			V = np.identity(T);
 		normalize_factor = np.std(np.matmul(U, V.T), axis=1, keepdims=True)*T;
 		print(time.time()-start);
-		B_mat = np.median(Yd, axis=1, keepdims=True);
+		if hals:
+			B_mat = np.median(Yd, axis=1, keepdims=True);
+		else:
+			B_mat = None;
 		#y0 = Yt[:dims[0],:dims[1]].reshape(np.prod(dims[:-1]),T,order="F");
 		#corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c_ini).reshape(dims[0],dims[1],-1,order="F");
 		return U_mat, V_mat, B_mat, U, V, normalize_factor, brightness_rank, pure_pix#, corr_img_all_r
@@ -967,7 +893,8 @@ def delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, word, plot_en):
 
 
 def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix, 
-			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,merge_overlap_thr=0.7, num_plane=1, plot_en=False,hals=False, max_allow_neuron_size=0.2):
+			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,
+			merge_overlap_thr=0.7, num_plane=1, plot_en=False, hals=False, max_allow_neuron_size=0.2):
 
 	K = c.shape[1];
 	res = np.zeros(maxiter);
@@ -978,13 +905,21 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 	corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
 	corr_img_all_r = corr_img_all.reshape(patch_size[0],patch_size[1],-1,order="F");
 
-	## initialize bg ##
 	f = np.ones([c.shape[0],1]);
 	num_list = np.arange(K);
 
+	if ~hals:
+		g = np.ones([a.shape[0],1]);
+		mask_ab = np.hstack((mask_a,g));
+
 	for iters in range(maxiter):
 		start = time.time();
-		a = ls_solve_ac(c, np.hstack((V,-1*f)), np.hstack((U,b)), mask=mask_a.T, hals=hals, beta_LS=a).T;
+		if hals:
+			a = ls_solve_ac(c, np.hstack((V,-1*f)), np.hstack((U,b)), mask=mask_a.T, hals=hals, beta_LS=a).T;
+		else:
+			temp = ls_solve_ac(np.hstack((c,f)), V, U, mask=mask_ab.T, hals=hals).T;
+			a = temp[:,:-1];
+
 		temp = (a.sum(axis=0) == 0);
 		if sum(temp):
 			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero a!", plot_en);		
@@ -996,14 +931,14 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero c!", plot_en);
 		b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
 
-		if update_after and ((iters + 1) % update_after == 0):
+		if update_after and (iters % update_after == 0):
 			corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
 			rlt = merge_components(a,c,corr_img_all,U, V, normalize_factor,num_list,patch_size,merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr,plot_en=plot_en);
 			flag = isinstance(rlt, int);
 			if ~np.array(flag):
 				a = rlt[1];
 				c = rlt[2];
-				corr_img_all = rlt[3];#vcorrcoef(U/normalize_factor, V.T, c);
+				corr_img_all = rlt[3];
 				num_list = rlt[4];
 			else:
 				print("no merge!");
@@ -1015,6 +950,9 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 			if sum(temp):
 				a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero mask!", plot_en);
 			a = a*mask_a;
+
+			if ~hals:
+				mask_ab = np.hstack((mask_a,g));
 
 		residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
 		res[iters] = np.linalg.norm(residual, "fro");
@@ -1030,7 +968,7 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 	a_max = a.max(axis=0);
 	c_max = c.max(axis=0);
 	brightness = a_max * c_max;
-	brightness_rank = np.argsort(-brightness); #a.shape[1] - ss.rankdata(brightness,method="ordinal");
+	brightness_rank = np.argsort(-brightness);
 	a = a[:,brightness_rank];
 	c = c[:,brightness_rank];
 	corr_img_all_r = corr_img_all_r[:,:,brightness_rank];
@@ -1041,174 +979,64 @@ def update_AC_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 		print("residual relative change: " + str(abs(res[iters] - res[iters-1])/res[iters-1]));
 	return a, c, b, fb, ff, res, corr_img_all_r, num_list
 
+def update_AC_bg_l2(U, V, normalize_factor, a, c, b, ff, fb, patch_size, corr_th_fix, 
+			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,
+			merge_overlap_thr=0.7, num_plane=1, plot_en=False,
+			hals=False, max_allow_neuron_size=0.2):
 
-def update_AC_bg_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix, 
-			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,merge_overlap_thr=0.7, num_plane=1, plot_en=False, ff=None,hals=False,max_allow_neuron_size=0.2):
-	"""
-	update spatial and temporal components using correlation image as constraints, with L2 loss
-
-	Parameters:
-	----------------
-	y0: 2d np.darray: number pixels x T
-	threshold data for this patch
-	c_ini: 2d np.darray, T x number of pure superpixels
-		initialization of temporal components
-	corr_img_all_r: 3d np.darray, d1 x d2 x number of pure superpixels
-		correlation image: corr(y0, c_ini).
-	corr_th_ini: double scalar
-		correlation cut-off when initializing support of spatial components.		
-	corr_th_fix: double scalar
-		correlation cut-off when fixing support of spatial components.		
-	corr_th_dilate: list
-		correlation cut-off when dilating support of spatial components.
-	dilate_times: int scalar
-		should be equal to the length of corr_th_dilate.
-	maxiter: double scalar
-		maximum iteration times
-	tol: double scalar
-		tolerance of change of residual
-	whole_data: Boolean
-		Use whole data if True or just above threshold data to do initilization.  Default is True.
-
-	Return:
-	----------------
-	a_ini: 2d np.darray, number pixels x number of pure superpixels
-		initialization of spatial components
-	a: 2d np.darray, number pixels x number of pure superpixels
-		final result of spatial components
-	c_ini: 2d np.darray, T x number of pure superpixels
-		initialization of temporal components
-	c: 2d np.darray, T x number of pure superpixels
-		final result of temporal components
-	b: 2d np.darray, number pixels x 1
-		constant background component
-	res: list
-		residual change for ||Y - AC||_F^2, should decrease monotonically.
-	""" 
-	
 	K = c.shape[1];
-	num_bg = 1+ff.shape[1];
-
-	f = np.ones([c.shape[0],1]);
-	g = np.ones([a.shape[0],num_bg]);
 	res = np.zeros(maxiter);
-	
-	###################### initialize A ###########################
-	mask_a = (a > 0)*1;
-	#mask_a = (corr_img_all > corr_th_ini);
-	mask_ab = np.hstack((mask_a,g));
-	temp = ls_solve_ac(np.hstack((c,f,ff)), V, U, mask_ab.T).T;
-
-	a = temp[:,:-num_bg];
-	fb = temp[:,(-num_bg+1):];
-	#b = temp[:,[-1]];
-	#a = ls_solve_a(c, V, U, mask_a.T).T;
-	b = np.maximum(0, (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+	uv_mean = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
 	num_list = np.arange(K);
 
-	try:
-		c = ls_solve_ac(a, np.hstack((U,b,fb)), np.hstack((V,-1*f,-1*ff)), None).T;	
-		#c = c-c.min(axis=0,keepdims=True);
-		b = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
-		ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), None).T;
-		b = np.maximum(0, b);
+	num_bg = ff.shape[1];
+	f = np.ones([c.shape[0],1]);
+	fg = np.ones([a.shape[0],num_bg]);
 
-	except:
-		print("zero a!");
-		pos = np.where(a.sum(axis=0) == 0)[0];
-		print("delete components" + str(num_list[pos]+1));
-		a = np.delete(a, pos, axis=1);
-		num_list = np.delete(num_list, pos);
-		c = ls_solve_ac(a, np.hstack((U,b,fb)), np.hstack((V,-1*f,-1*ff)), None).T;	
-		#c = c-c.min(axis=0,keepdims=True);
-		b = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
-		ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), None).T;
-		b = np.maximum(0, b);
-			
-	##################### iteratively update A and C (dilate A) ##############################
-	########## update mask a #################
-	print("dilate!");
-	mask_a = (a > 0)*1;
-	corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c).reshape(patch_size[0],patch_size[1],-1,order="F");
-	mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane,max_allow_neuron_size=max_allow_neuron_size);
-	a = a*mask_a;
+	## initialize spatial support ##
+	mask_a = (a>0)*1;
+	corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
+	corr_img_all_r = corr_img_all.reshape(patch_size[0],patch_size[1],-1,order="F");
+	mask_ab = np.hstack((mask_a,fg));
 
-	if sum(mask_a.sum(axis=0) == 0):
-		print("zero mask a!");
-		pos = np.where(mask_a.sum(axis=0) == 0)[0];
-		print("delete components" + str(num_list[pos]+1));
-		#np.savez("delete.npz",a=a[:,pos], cor=corr_img_all_r[:,:,pos])
-		if plot_en:
-			spatial_comp_plot(a[:,pos], corr_img_all_r[:,:,pos], num_list=num_list[pos], ini=False);
-		corr_img_all_r = np.delete(corr_img_all_r, pos, axis=2);
-		mask_a = np.delete(mask_a, pos, axis=1);
-		a = np.delete(a, pos, axis=1);
-		c = np.delete(c, pos, axis=1);
-		num_list = np.delete(num_list, pos);
-	mask_ab = np.hstack((mask_a,g));
+	if ~hals:
+		g = np.ones([a.shape[0],1]);
+		mask_ab = np.hstack((mask_ab,g));
 
 	for iters in range(maxiter):
-		start_time = time.time();
-		try:
-			temp = ls_solve_ac(np.hstack((c,f,ff)), V, U, mask_ab.T, hals, np.hstack((a,b,fb))).T;
+		start = time.time();
+		if hals:
+			temp = ls_solve_ac(np.hstack((c,ff)), np.hstack((V,-1*f)), np.hstack((U,b)), mask=mask_ab.T, hals=hals, beta_LS=np.hstack((a,fb))).T;
 			a = temp[:,:-num_bg];
-			fb = temp[:,(-num_bg+1):];
-			#a = temp[:,:-1];
-			#b = temp[:,[-1]];
-			#a = ls_solve_a(c, V, U, mask_a.T).T;
-			b = np.maximum(0, (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
-			#residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
-			#res[iters] = np.linalg.norm(residual, "fro");
-			#print(res[iters]);
-		except:
-			print("zero c!");
-			pos = np.where(c.sum(axis=0) == 0)[0];
-			print("delete components" + str(num_list[pos]+1));
-			if plot_en:
-				spatial_comp_plot(a[:,pos], corr_img_all_r[:,:,pos], num_list[pos], ini=False);
-			mask_a = np.delete(mask_a, pos, axis=1);
-			mask_ab = np.hstack((mask_a,g));
-			corr_img_all_r = np.delete(corr_img_all_r, pos, axis=2);
-			c = np.delete(c, pos, axis=1);
-			num_list = np.delete(num_list, pos);
-			temp = ls_solve_ac(np.hstack((c,f,ff)), V, U, mask_ab.T, hals, np.hstack((a,b,fb))).T;
-			a = temp[:,:-num_bg];
-			fb = temp[:,(-num_bg+1):];
-			#a = temp[:,:-1];
-			#b = temp[:,[-1]];
-			#a = ls_solve_a(c, V, U, mask_a.T).T;
-			b = np.maximum(0, (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+			fb = temp[:,-num_bg:];
+		else:
+			temp = ls_solve_ac(np.hstack((c,ff,f)), V, U, mask=mask_ab.T, hals=hals).T;		
+			a = temp[:,:-(num_bg+1)];
+			fb = temp[:,-(num_bg+1):-1];
 
-			#residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
-			#res[iters] = np.linalg.norm(residual, "fro");
-			#print(res[iters]);	
-		try:
-			c = ls_solve_ac(a, np.hstack((U,b,fb)), np.hstack((V,-1*f,-1*ff)), None, hals, c).T;	
-			#c = c-c.min(axis=0,keepdims=True);
-			b = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
-			ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), None).T;
-			b = np.maximum(0, b);
-	
-		except:
-			print("zero a!");
-			pos = np.where(a.sum(axis=0) == 0)[0];
-			print("delete components" + str(num_list[pos]+1));
-			a = np.delete(a, pos, axis=1);
-			num_list = np.delete(num_list, pos);
-			c = ls_solve_ac(a, np.hstack((U,b,fb)), np.hstack((V,-1*f,-1*ff)), None, hals, c).T;	
-			#c = c-c.min(axis=0,keepdims=True);
-			b = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True)-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
-			ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), None).T;
-			b = np.maximum(0, b);
-		# Merge Components
-		if update_after and ((iters + 1) % update_after == 0):
+		temp = (a.sum(axis=0) == 0);
+		if sum(temp):
+			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero a!", plot_en);		
+		b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+
+		c = ls_solve_ac(a, np.hstack((U,fb,b)), np.hstack((V,-1*ff,-1*f)), mask=None, hals=hals, beta_LS=c).T;	
+
+		temp = (c.sum(axis=0) == 0);
+		if sum(temp):
+			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero c!", plot_en);
+
+		b = uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
+		ff = ls_solve_ff(fb, np.hstack((U,b,a)), np.hstack((V,-1*f,-1*c)), mask=None).T;
+		b = np.maximum(0, b);
+
+		if update_after and (iters % update_after == 0):
 			corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
 			rlt = merge_components(a,c,corr_img_all,U, V, normalize_factor,num_list,patch_size,merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr,plot_en=plot_en);
 			flag = isinstance(rlt, int);
 			if ~np.array(flag):
 				a = rlt[1];
 				c = rlt[2];
-				corr_img_all = rlt[3];#vcorrcoef(U/normalize_factor, V.T, c);
+				corr_img_all = rlt[3];
 				num_list = rlt[4];
 			else:
 				print("no merge!");
@@ -1216,32 +1044,19 @@ def update_AC_bg_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 			corr_img_all_r = corr_img_all.reshape(patch_size[0],patch_size[1],-1,order="F");
 			mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane, max_allow_neuron_size=max_allow_neuron_size);
 
-			a_temp = (mask_a.sum(axis=0) == 0);
-			#corr_temp = (corr_img_all_r.max(axis=0).max(axis=0) < corr_good);
-			if sum(a_temp): #or sum(corr_temp):
-				#if sum(a_temp):
-				print("zero mask a!")
-				pos = np.where(a_temp)[0];
-				#if sum(corr_temp):
-				#	print("junk components!");
-				#	pos = np.where(corr_temp)[0];
-				print("delete components" + str(num_list[pos]+1));
-				#np.savez("delete.npz",a=a[:,pos], cor=corr_img_all_r[:,:,pos])
-				if plot_en:
-					spatial_comp_plot(a[:,pos], corr_img_all_r[:,:,pos], num_list[pos], ini=False);
-				corr_img_all_r = np.delete(corr_img_all_r, pos, axis=2);
-				mask_a = np.delete(mask_a, pos, axis=1);
-				a = np.delete(a, pos, axis=1);
-				c = np.delete(c, pos, axis=1);
-				num_list = np.delete(num_list, pos);
-			mask_ab = np.hstack((mask_a,g));
+			temp = (mask_a.sum(axis=0) == 0);
+			if sum(temp):
+				a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero mask!", plot_en);
 			a = a*mask_a;
+			mask_ab = np.hstack((mask_a,fg));
+
+			if ~hals:
+				mask_ab = np.hstack((mask_ab,g));
 
 		residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b - np.matmul(fb,ff.T));
 		res[iters] = np.linalg.norm(residual, "fro");
 		print(res[iters]);
-		print("time: " + str(time.time()-start_time));
-
+		print("time: " + str(time.time()-start));
 		if iters > 0:
 			if abs(res[iters] - res[iters-1])/res[iters-1] <= tol:
 				break;
@@ -1252,30 +1067,15 @@ def update_AC_bg_l2(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix,
 	a_max = a.max(axis=0);
 	c_max = c.max(axis=0);
 	brightness = a_max * c_max;
-	brightness_rank = np.argsort(-brightness); #a.shape[1] - ss.rankdata(brightness,method="ordinal");
+	brightness_rank = np.argsort(-brightness);
 	a = a[:,brightness_rank];
 	c = c[:,brightness_rank];
 	corr_img_all_r = corr_img_all_r[:,:,brightness_rank];
 	num_list = num_list[brightness_rank];
-
-	#for ii in range(a.shape[1]):
-	#	v_max = a[:,ii].max();
-	#	u_max = c[:,ii].max();
-	#	brightness[ii] = u_max * v_max;
-	#brightness_rank = a.shape[1] - ss.rankdata(brightness,method="ordinal");
-	#brightness_rank = np.arange(a.shape[1]);
-	#a_cp = a.copy();
-	#c_cp = c.copy();
-	#corr_cp = corr_img_all_r.copy();
-	#num_list_cp = num_list.copy();
-	#for ii in range(a.shape[1]):
-	#	a_cp[:,ii] = a[:,np.where(brightness_rank==ii)[0][0]];
-	#	c_cp[:,ii] = c[:,np.where(brightness_rank==ii)[0][0]];
-	#	corr_cp[:,:,ii] = corr_img_all_r[:,:,np.where(brightness_rank==ii)[0][0]];
-	#	num_list_cp[ii] = num_list[np.where(brightness_rank==ii)[0][0]];
 	if iters > 0:
 		print("residual relative change: " + str(abs(res[iters] - res[iters-1])/res[iters-1]));
 	return a, c, b, fb, ff, res, corr_img_all_r, num_list
+
 
 def reconstruct(Yd, spatial_components, temporal_components, background_components, fb=None, ff=None):
 	"""
@@ -1384,9 +1184,9 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 		start = time.time();
 		print("rank 1 svd!")
 		if ii > 0:
-			c_ini, a_ini, _ , _ = spatial_temporal_ini(Yt, comps, idx, length_cut[ii], maxiter=5, whole_data=True, method="svd",bg=bg);
+			c_ini, a_ini, _, _ = spatial_temporal_ini(Yt, comps, idx, length_cut[ii], bg=False);
 		else:
-			c_ini, a_ini, ff, _ = spatial_temporal_ini(Yt, comps, idx, length_cut[ii], maxiter=5, whole_data=True, method="svd",bg=bg);
+			c_ini, a_ini, ff, fb = spatial_temporal_ini(Yt, comps, idx, length_cut[ii], bg=bg);
 			#return ff
 		print(time.time()-start);
 		unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]); #search_superpixel_in_range(connect_mat_1, permute_col, V_mat);
@@ -1418,7 +1218,7 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 			a = np.hstack((a, a_ini));
 			c = np.hstack((c, c_ini));
 		else:
-			a, c, b, U, V, normalize_factor, brightness_rank, pure_pix = prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, a_ini, c_ini, more=True, low_rank=low_rank);
+			a, c, b, U, V, normalize_factor, brightness_rank, pure_pix = prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, a_ini, c_ini, more=True, low_rank=low_rank, hals=hals);
 		
 		print(time.time()-start);
 		
@@ -1434,9 +1234,9 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 			maxiter=max_iter;
 		
 		if bg:
-			a, c, b, fb, ff, res, corr_img_all_r, num_list = update_AC_bg_l2(U, V, normalize_factor, a, c, b, dims,
+			a, c, b, fb, ff, res, corr_img_all_r, num_list = update_AC_bg_l2(U, V, normalize_factor, a, c, b, ff, fb, dims,
 										corr_th_fix, maxiter=maxiter, tol=1e-8, update_after=update_after,
-										merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr, num_plane=num_plane, plot_en=plot_en, ff=ff,hals=hals,max_allow_neuron_size=max_allow_neuron_size);
+										merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr, num_plane=num_plane, plot_en=plot_en, hals=hals,max_allow_neuron_size=max_allow_neuron_size);
 
 		else:
 			a, c, b, fb, ff, res, corr_img_all_r, num_list = update_AC_l2(U, V, normalize_factor, a, c, b, dims,
@@ -1507,8 +1307,26 @@ def l1_tf(y, sigma):
 		return y
 	return np.asarray(x.value).flatten()
 
+def match_comp(rlt,rlt_lasso_Ydc, rlt_lasso_Yrawc,th):
+	K = rlt.shape[1];
+	order_Yd = np.zeros([K])
+	order_Yraw = np.zeros([K])
+	for ii in range(K):
+		temp = vcorrcoef2(rlt_lasso_Ydc.T, rlt[:,ii]);
+		temp2 = vcorrcoef2(rlt_lasso_Yrawc.T, rlt[:,ii]);
+		if temp.max() > th:
+			order_Yd[ii] = int(np.argmax(temp));
+		else:
+			order_Yd[ii] = np.nan;
+		if temp2.max() > th:
+			order_Yraw[ii] = int(np.argmax(temp2));
+		else:
+			order_Yraw[ii] = np.nan;
+	order_Yd = np.asarray(order_Yd,dtype=int);
+	order_Yraw = np.asarray(order_Yraw,dtype=int);
+	return order_Yd, order_Yraw
 
-def match_comp(rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
+def match_comp_debug(rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
 	K = rlt.shape[1];
 	order_Yd = np.zeros([K])
 	order_Yraw = np.zeros([K])
@@ -1539,8 +1357,36 @@ def match_comp(rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc, rlt_a, rlt_lasso_Yda, rlt_la
 	order_Yraw = np.asarray(order_Yraw,dtype=int);
 	return order_Yd, order_Yraw
 
+def match_comp_gt(rlt_gt, rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc,th):
+	K = rlt_gt.shape[1];
+	order_Ys = np.zeros([K]);
+	order_Yd = np.zeros([K])
+	order_Yraw = np.zeros([K])
+	for ii in range(K):
+		temp0 = vcorrcoef2(rlt.T, rlt_gt[:,ii]);
+		temp = vcorrcoef2(rlt_lasso_Ydc.T, rlt_gt[:,ii]);
+		temp2 = vcorrcoef2(rlt_lasso_Yrawc.T, rlt_gt[:,ii]);
 
-def match_comp_gt(rlt_gt, rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc,rlt_gta, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
+		if temp0.max() > th:
+			order_Ys[ii] = int(np.argmax(temp0));
+			#if ii == K-1:
+			#	order_Ys[ii] = 13;
+		else:
+			order_Ys[ii] = np.nan;		
+		if temp.max() > th:
+			order_Yd[ii] = int(np.argmax(temp));
+		else:
+			order_Yd[ii] = np.nan;
+		if temp2.max() > th:
+			order_Yraw[ii] = int(np.argmax(temp2));
+		else:
+			order_Yraw[ii] = np.nan;
+	order_Ys = np.asarray(order_Ys,dtype=int);
+	order_Yd = np.asarray(order_Yd,dtype=int);
+	order_Yraw = np.asarray(order_Yraw,dtype=int);
+	return order_Ys, order_Yd, order_Yraw
+
+def match_comp_gt_debug(rlt_gt, rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc,rlt_gta, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
 	K = rlt_gt.shape[1];
 	order_Ys = np.zeros([K]);
 	order_Yd = np.zeros([K])
@@ -2200,4 +2046,125 @@ def sim_noise(dims, noise_source):
 	noise_sim = noise_source[random_indices].reshape(dims,order="F");
 	return noise_sim
 
+
+
+def update_AC_l2aa(U, V, normalize_factor, a, c, b, patch_size, corr_th_fix, 
+			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,merge_overlap_thr=0.7, num_plane=1, plot_en=False,hals=False, max_allow_neuron_size=0.2):
+	"""
+	update spatial and temporal components using correlation image as constraints, with L2 loss
+
+	""" 
+	
+	K = c.shape[1];
+
+	f = np.ones([c.shape[0],1]);
+	g = np.ones([a.shape[0],1]);
+	res = np.zeros(maxiter);
+	uv_mean = (U*(V.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True);
+	
+	## initialize spatial support ##
+	mask_a = (a > 0)*1;
+	mask_ab = np.hstack((mask_a,g));
+
+	## initialize a ##
+	temp = ls_solve_ac(np.hstack((c,f)), V, U, mask_ab.T).T;
+	a = temp[:,:-1];
+	b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+	num_list = np.arange(K);
+
+	residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
+	print(np.linalg.norm(residual, "fro"));
+
+	temp = (a.sum(axis=0) == 0);
+	if sum(temp):
+		print("zero a!");
+		pos = np.where(temp)[0];
+		print("delete components" + str(num_list[pos]+1));
+		a = np.delete(a, pos, axis=1);
+		num_list = np.delete(num_list, pos);
+	
+	## initialize c ##
+	c = ls_solve_ac(a, np.hstack((U,b)), np.hstack((V,-1*f)), None).T;
+	b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+	residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
+	print(np.linalg.norm(residual, "fro"));
+	## dilate mask a ##
+	print("dilate!");
+	mask_a = (a > 0)*1;
+	corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c).reshape(patch_size[0],patch_size[1],-1,order="F");
+	mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane,max_allow_neuron_size=max_allow_neuron_size);
+	a = a*mask_a;
+
+	temp = (mask_a.sum(axis=0) == 0);
+	if sum(temp):
+		a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero mask!");		
+	mask_ab = np.hstack((mask_a,g));
+
+	for iters in range(maxiter):
+		start_time = time.time();
+		temp = (c.sum(axis=0) == 0);
+		if sum(temp):
+			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero c!");
+
+		temp = ls_solve_ac(np.hstack((c,f)), V, U, mask=mask_ab.T, hals=hals, beta_LS=np.hstack((a,b))).T;
+		a = temp[:,:-1];
+		#a = temp[:,:-1];
+		#b = temp[:,[-1]];
+		b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+
+
+		temp = (a.sum(axis=0) == 0);
+		if sum(temp):
+			a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero a!");		
+
+		c = ls_solve_ac(a, np.hstack((U,b)), np.hstack((V,-1*f)), None).T;
+		b = np.maximum(0, uv_mean-(a*(c.mean(axis=0,keepdims=True))).sum(axis=1,keepdims=True));
+
+		# Merge Components and update mask
+		if update_after and ((iters + 1) % update_after == 0):
+			corr_img_all = vcorrcoef(U/normalize_factor, V.T, c);
+			rlt = merge_components(a,c,corr_img_all,U, V, normalize_factor,num_list,patch_size,merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr,plot_en=plot_en);
+			flag = isinstance(rlt, int);
+			if ~np.array(flag):
+				a = rlt[1];
+				c = rlt[2];
+				corr_img_all = rlt[3];#vcorrcoef(U/normalize_factor, V.T, c);
+				num_list = rlt[4];
+			else:
+				print("no merge!");
+			mask_a = (a>0)*1;
+			corr_img_all_r = corr_img_all.reshape(patch_size[0],patch_size[1],-1,order="F");
+			mask_a = make_mask(corr_img_all_r, corr_th_fix, mask_a, num_plane, max_allow_neuron_size=max_allow_neuron_size);
+
+			temp = (mask_a.sum(axis=0) == 0);
+			if sum(temp):
+				a, c, corr_img_all_r, mask_a, num_list = delete_comp(a, c, corr_img_all_r, mask_a, num_list, temp, "zero mask!");		
+			mask_ab = np.hstack((mask_a,g));
+			a = a*mask_a;
+
+		residual = (np.matmul(U, V.T) - np.matmul(a, c.T) - b);
+		res[iters] = np.linalg.norm(residual, "fro");
+		print(res[iters]);
+		print("time: " + str(time.time()-start_time));
+
+		if iters > 0:
+			if abs(res[iters] - res[iters-1])/res[iters-1] <= tol:
+				break;
+	temp = np.sqrt((a**2).sum(axis=0,keepdims=True));
+	c = c*temp;
+	a = a/temp;
+	brightness = np.zeros(a.shape[1]);
+	a_max = a.max(axis=0);
+	c_max = c.max(axis=0);
+	brightness = a_max * c_max;
+	brightness_rank = np.argsort(-brightness); #a.shape[1] - ss.rankdata(brightness,method="ordinal");
+	a = a[:,brightness_rank];
+	c = c[:,brightness_rank];
+	corr_img_all_r = corr_img_all_r[:,:,brightness_rank];
+	num_list = num_list[brightness_rank];
+	ff = None;
+	fb = None;
+	if iters > 0:
+		print("residual relative change: " + str(abs(res[iters] - res[iters-1])/res[iters-1]));
+	return a, c, b, fb, ff, res, corr_img_all_r, num_list
 
