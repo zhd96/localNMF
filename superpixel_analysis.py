@@ -584,7 +584,7 @@ def fast_sep_nmf(M, r, th, normalize=1):
 	#	coef_rank[:,ii] = [x for _,x in sorted(zip(len(pure_pixels) - ss.rankdata(coef[:,ii]), pure_pixels))];
 	return pure_pixels #, coef, coef_rank
 
-def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_mat, V_mat, more=False, low_rank=False, hals=False):
+def prepare_iteration(Yd, connect_mat_1, permute_col, pure_pix, U_mat, V_mat, more=False, low_rank=False, hals=False):
 	"""
 	Get some needed variables for the successive nmf iterations.
 
@@ -596,18 +596,12 @@ def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_ma
 		illustrate position of each superpixel, same value means same superpixel
 	permute_col: list, length = number of superpixels
 		random number used to idicate superpixels in connect_mat_1
-	unique_pix: 2d np.darray, dimension d x 1
-		random numbers for superpixels in this patch
 	pure_pixels: 1d np.darray, dimension d x 1. (d is number of pure superpixels)
 		pure superpixels for these superpixels, actually column indices of M.	
 	V_mat: 2d np.darray, dimension T x number of superpixel
 		temporal initilization
 	U_mat: 2d np.darray, dimension (d1*d2) x number of superpixel
 		spatial initilization
-	x_range: list, length = 2
-		vertical range: [up, down], include both up and down rows.
-	y_range: list, length = 2
-		horizonal range: [left, right], include both left and right columns.
 
 	Return:
 	----------------
@@ -619,10 +613,6 @@ def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_ma
 		threshold data for this patch
 	brightness_rank: 2d np.darray, dimension d x 1
 		brightness rank for pure superpixels in this patch. Rank 1 means the brightest.
-	pure_pix: 2d np.darray, dimension d x 1
-		random numbers for pure superpixels in this patch
-	corr_img_all_r: 3d np.darray, d1 x d2 x number of pure superpixels
-		correlation image: corr(y0, c_ini).
 	""" 
 
 	dims = Yd.shape;
@@ -667,9 +657,9 @@ def prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, U_ma
 			B_mat = None;
 		#y0 = Yt[:dims[0],:dims[1]].reshape(np.prod(dims[:-1]),T,order="F");
 		#corr_img_all_r = vcorrcoef(U/normalize_factor, V.T, c_ini).reshape(dims[0],dims[1],-1,order="F");
-		return U_mat, V_mat, B_mat, U, V, normalize_factor, brightness_rank, pure_pix#, corr_img_all_r
+		return U_mat, V_mat, B_mat, U, V, normalize_factor, brightness_rank#, corr_img_all_r
 	else:
-		return U_mat, V_mat, brightness_rank, pure_pix
+		return U_mat, V_mat, brightness_rank
 
 def ls_solve_ac(X, U, V, mask=None, hals=False, beta_LS=None):
 	"""
@@ -1118,7 +1108,7 @@ def superpixel_initialization(Yd, cut_off_point=0.9, length_cut=10, th=2, num_pl
 		print(time.time()-start);
 	start = time.time();
 	print("rank 1 svd!")
-	c_ini, a_ini, _ , _ = spatial_temporal_ini(Yt, comps, idx, length_cut, maxiter=5, whole_data=True, method="svd");
+	c_ini, a_ini, _ , _ = spatial_temporal_ini(Yt, comps, idx, length_cut);
 	print(time.time()-start);
 		
 	temp = np.sqrt((a_ini**2).sum(axis=0,keepdims=True));
@@ -1139,11 +1129,84 @@ def superpixel_initialization(Yd, cut_off_point=0.9, length_cut=10, th=2, num_pl
 		Cnt = None;
 	return a_ini, c_ini, connect_mat_1, brightness_rank, permute_col, Cnt
 
+def order_superpixels(permute_col, unique_pix, U_mat, V_mat):
+	####################### pull out all the superpixels ################################
+	permute_col = list(permute_col);
+	pos = [permute_col.index(x) for x in unique_pix];
+	U_mat = U_mat[:,pos];
+	V_mat = V_mat[:,pos];
+	####################### order pure superpixel according to brightness ############################
+	brightness = np.zeros(len(unique_pix));
+
+	u_max = U_mat.max(axis=0);
+	v_max = V_mat.max(axis=0);
+	brightness = u_max * v_max;
+	brightness_arg = np.argsort(-brightness); #
+	brightness_rank = U_mat.shape[1] - ss.rankdata(brightness,method="ordinal");
+	return brightness_rank
+
+def extract_pure_and_superpixels(Yd, cut_off_point=0.9, length_cut=15, th=2, residual_cut = 0.43, num_plane=1, patch_size=[100,100], plot_en=False, text=False):
+
+	if Yd.min() < 0:
+		Yd -= Yd.min(axis=2);
+
+	dims = Yd.shape[:2];
+	T = Yd.shape[2];
+	superpixel_rlt = [];
+
+	## cut image into small parts to find pure superpixels ##
+	patch_height = patch_size[0];#100;
+	patch_width = patch_size[1];#100;
+	height_num = int(np.ceil(dims[0]/patch_height));  ########### if need less data to find pure superpixel, change dims[0] here #################
+	width_num = int(np.ceil(dims[1]/(patch_width*num_plane)));
+	num_patch = height_num*width_num;
+	patch_ref_mat = np.array(range(num_patch)).reshape(height_num, width_num, order="F");
+
+	Yt = threshold_data(Yd, th=th);
+	if num_plane > 1:
+		print("3d data!");
+		connect_mat_1, idx, comps, permute_col = find_superpixel_3d(Yt,num_plane,cut_off_point,length_cut,eight_neighbours=True);
+	else:
+		print("find superpixels!")
+		connect_mat_1, idx, comps, permute_col = find_superpixel(Yt,cut_off_point,length_cut,eight_neighbours=True);
+
+	c_ini, a_ini, _, _ = spatial_temporal_ini(Yt, comps, idx, length_cut, bg=False);
+	unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]);
+	brightness_rank_sup = order_superpixels(permute_col, unique_pix, a_ini, c_ini);
+
+	pure_pix = [];
+	
+	print("find pure superpixels!")
+	for kk in range(num_patch):
+		pos = np.where(patch_ref_mat==kk);
+		up=pos[0][0]*patch_height;
+		down=min(up+patch_height, dims[0]);
+		left=pos[1][0]*patch_width;
+		right=min(left+patch_width, dims[1]);
+		unique_pix_temp, M = search_superpixel_in_range((connect_mat_1.reshape(dims[0],int(dims[1]/num_plane),num_plane,order="F"))[up:down,left:right], permute_col, c_ini);
+		pure_pix_temp = fast_sep_nmf(M, M.shape[1], residual_cut);
+		if len(pure_pix_temp)>0:
+			pure_pix = np.hstack((pure_pix, unique_pix_temp[pure_pix_temp]));
+
+	pure_pix = np.unique(pure_pix);
+
+	print("prepare iteration!")
+	a_ini, c_ini, brightness_rank = prepare_iteration(Yd, connect_mat_1, permute_col, pure_pix, a_ini, c_ini, more=False);
+	
+	if plot_en:	
+		Cnt = local_correlations_fft(Yt);
+		pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text);
+	else:
+		Cnt = None;
+	return a_ini, c_ini, connect_mat_1, unique_pix, brightness_rank_sup, pure_pix, brightness_rank, Cnt
 
 def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pass_num=2, residual_cut = 0.43,
 					corr_th_fix=0.4, max_allow_neuron_size=0.3, merge_corr_thr=0.5, merge_overlap_thr=0.8, num_plane=1, patch_size=[100,100],
 					plot_en=False, TF=False, fudge_factor=1, text=True, bg=False, max_iter=21, max_iter_fin=41, 
 					hals=False, low_rank=False, update_after=2):
+
+	if Yd.min() < 0:
+		Yd -= Yd.min(axis=2);
 
 	dims = Yd.shape[:2];
 	T = Yd.shape[2];
@@ -1190,6 +1253,8 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 			#return ff
 		print(time.time()-start);
 		unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]); #search_superpixel_in_range(connect_mat_1, permute_col, V_mat);
+		brightness_rank_sup = order_superpixels(permute_col, unique_pix, a_ini, c_ini);
+
 		#unique_pix = np.asarray(unique_pix);
 		pure_pix = [];
 		
@@ -1205,26 +1270,24 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 			pure_pix_temp = fast_sep_nmf(M, M.shape[1], residual_cut[ii]);
 			if len(pure_pix_temp)>0:
 				pure_pix = np.hstack((pure_pix, unique_pix_temp[pure_pix_temp]));
-
 		pure_pix = np.unique(pure_pix);
+
 		print(time.time()-start);
-		if plot_en:
-			pure_superpixel_compare_plot(connect_mat_1, unique_pix, pure_pix, text);
-		
+
 		start = time.time();		
 		print("prepare iteration!")	
 		if ii > 0:
-			a_ini, c_ini, brightness_rank, pure_pix = prepare_iteration(Yd_res, connect_mat_1, permute_col, unique_pix, pure_pix, a_ini, c_ini);
+			a_ini, c_ini, brightness_rank = prepare_iteration(Yd_res, connect_mat_1, permute_col, pure_pix, a_ini, c_ini);
 			a = np.hstack((a, a_ini));
 			c = np.hstack((c, c_ini));
 		else:
-			a, c, b, U, V, normalize_factor, brightness_rank, pure_pix = prepare_iteration(Yd, connect_mat_1, permute_col, unique_pix, pure_pix, a_ini, c_ini, more=True, low_rank=low_rank, hals=hals);
+			a, c, b, U, V, normalize_factor, brightness_rank = prepare_iteration(Yd, connect_mat_1, permute_col, pure_pix, a_ini, c_ini, more=True, low_rank=low_rank, hals=hals);
 		
 		print(time.time()-start);
-		
+
 		if plot_en:
 			Cnt = local_correlations_fft(Yt);
-			superpixel_corr_plot(connect_mat_1, pure_pix, Cnt, brightness_rank, text);
+			pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text);
 			#temporal_comp_plot(c_ini,ini = True);
 			#spatial_comp_plot(a_ini, corr_img_all_r, ini=True);
 		print("start " + str(ii+1) + " pass iteration!")
@@ -1532,6 +1595,51 @@ def pure_superpixel_compare_plot(connect_mat_1, unique_pix, pure_pix, text=False
 	ax1.set(title="Pure superpixels")
 	ax1.title.set_fontsize(15)
 	ax1.title.set_fontweight("bold")
+	plt.tight_layout()
+	plt.show();
+	return fig
+
+def pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text=False):
+	scale = np.maximum(1, (connect_mat_1.shape[1]/connect_mat_1.shape[0]));
+	fig = plt.figure(figsize=(8*scale,16));
+	ax = plt.subplot(3,1,1);
+	ax.imshow(connect_mat_1,cmap="jet");
+	
+	if text:
+		for ii in range(len(unique_pix)):
+		    pos = np.where(connect_mat_1[:,:] == unique_pix[ii]);
+		    pos0 = pos[0];
+		    pos1 = pos[1];
+		    ax.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank_sup[ii]+1}",
+		        verticalalignment='bottom', horizontalalignment='right',color='white', fontsize=15, fontweight="bold")
+	ax.set(title="Superpixels")
+	ax.title.set_fontsize(15)
+	ax.title.set_fontweight("bold")
+	
+	ax1 = plt.subplot(3,1,2);
+	dims = connect_mat_1.shape;
+	connect_mat_1 = connect_mat_1.reshape(np.prod(dims),order="F");
+	connect_mat_1[~np.in1d(connect_mat_1,pure_pix)]=0;
+	connect_mat_1 = connect_mat_1.reshape(dims,order="F");
+
+	ax1.imshow(connect_mat_1,cmap="jet");
+	
+	if text:
+		for ii in range(len(pure_pix)):
+		    pos = np.where(connect_mat_1[:,:] == pure_pix[ii]);
+		    pos0 = pos[0];
+		    pos1 = pos[1];
+		    ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank[ii]+1}",
+		        verticalalignment='bottom', horizontalalignment='right',color='white', fontsize=15, fontweight="bold")
+	ax1.set(title="Pure superpixels")
+	ax1.title.set_fontsize(15)
+	ax1.title.set_fontweight("bold");
+
+	ax2 = plt.subplot(3,1,3);
+	show_img(ax2, Cnt);
+	ax2.set(title="Local mean correlation")
+	ax2.title.set_fontsize(15)
+	ax2.title.set_fontweight("bold")
 	plt.tight_layout()
 	plt.show();
 	return fig
