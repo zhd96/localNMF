@@ -1194,7 +1194,7 @@ def order_superpixels(permute_col, unique_pix, U_mat, V_mat):
 def extract_pure_and_superpixels(Yd, cut_off_point=0.9, length_cut=15, th=2, residual_cut = 0.43, num_plane=1, patch_size=[100,100], plot_en=False, text=False):
 
 	if Yd.min() < 0:
-		Yd -= Yd.min(axis=2);
+		Yd -= Yd.min(axis=2, keepdims=True);
 
 	dims = Yd.shape[:2];
 	T = Yd.shape[2];
