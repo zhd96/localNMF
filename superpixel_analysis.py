@@ -315,7 +315,7 @@ def find_superpixel(Yt, cut_off_point, length_cut, eight_neighbours=True):
 		B = np.concatenate([B_v,B_h])
 
 	########### form connected componnents #########  
-	G = nx.Graph()
+	G = nx.Graph();
 	G.add_edges_from(list(zip(A, B)))
 	comps=list(nx.connected_components(G))
 	
@@ -516,7 +516,10 @@ def search_superpixel_in_range(connect_mat, permute_col, V_mat):
 		temporal components for superpixels in this patch
 	""" 
 
-	unique_pix = np.sort(np.unique(connect_mat))[1:];
+	unique_pix = np.asarray(np.sort(np.unique(connect_mat)),dtype="int");
+	unique_pix = unique_pix[np.nonzero(unique_pix)];
+	#unique_pix = list(unique_pix);
+
 	M = np.zeros([V_mat.shape[0], len(unique_pix)]);
 	for ii in range(len(unique_pix)):
 	    M[:,ii] =  V_mat[:,int(np.where(permute_col==unique_pix[ii])[0])];
@@ -1215,9 +1218,10 @@ def extract_pure_and_superpixels(Yd, cut_off_point=0.9, length_cut=15, th=2, res
 	else:
 		print("find superpixels!")
 		connect_mat_1, idx, comps, permute_col = find_superpixel(Yt,cut_off_point,length_cut,eight_neighbours=True);
-
 	c_ini, a_ini, _, _ = spatial_temporal_ini(Yt, comps, idx, length_cut, bg=False);
-	unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]);
+	unique_pix = np.asarray(np.sort(np.unique(connect_mat_1)),dtype="int");
+	unique_pix = unique_pix[np.nonzero(unique_pix)];
+
 	brightness_rank_sup = order_superpixels(permute_col, unique_pix, a_ini, c_ini);
 
 	pure_pix = [];
@@ -1235,13 +1239,11 @@ def extract_pure_and_superpixels(Yd, cut_off_point=0.9, length_cut=15, th=2, res
 			pure_pix = np.hstack((pure_pix, unique_pix_temp[pure_pix_temp]));
 
 	pure_pix = np.unique(pure_pix);
-
 	print("prepare iteration!")
-	a_ini, c_ini, brightness_rank = prepare_iteration(Yd, connect_mat_1, permute_col, pure_pix, a_ini, c_ini, more=False);
-	
+	a_ini, c_ini, brightness_rank = prepare_iteration(Yd, connect_mat_1, permute_col, pure_pix, a_ini, c_ini, more=False); 
 	if plot_en:	
 		Cnt = local_correlations_fft(Yt);
-		pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text);
+		fig = pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text);
 	else:
 		Cnt = None;
 	return a_ini, c_ini, connect_mat_1, unique_pix, brightness_rank_sup, pure_pix, brightness_rank, Cnt
@@ -1298,7 +1300,9 @@ def axon_pipeline(Yd, cut_off_point=[0.9,0.8], length_cut=[15,10], th=[2,1], pas
 			c_ini, a_ini, ff, fb = spatial_temporal_ini(Yt, comps, idx, length_cut[ii], bg=bg);
 			#return ff
 		print(time.time()-start);
-		unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]); #search_superpixel_in_range(connect_mat_1, permute_col, V_mat);
+		unique_pix = np.asarray(np.sort(np.unique(connect_mat_1)),dtype="int");
+		unique_pix = unique_pix[np.nonzero(unique_pix)];
+		#unique_pix = np.asarray(np.sort(np.unique(connect_mat_1))[1:]); #search_superpixel_in_range(connect_mat_1, permute_col, V_mat);
 		brightness_rank_sup = order_superpixels(permute_col, unique_pix, a_ini, c_ini);
 
 		#unique_pix = np.asarray(unique_pix);
@@ -1625,15 +1629,16 @@ def pure_superpixel_compare_plot(connect_mat_1, unique_pix, pure_pix, text=False
 	
 	ax1 = plt.subplot(1,2,2);
 	dims = connect_mat_1.shape;
-	connect_mat_1 = connect_mat_1.reshape(np.prod(dims),order="F");
-	connect_mat_1[~np.in1d(connect_mat_1,pure_pix)]=0;
-	connect_mat_1 = connect_mat_1.reshape(dims,order="F");
+	connect_mat_1_pure = connect_mat_1.copy();
+	connect_mat_1_pure = connect_mat_1_pure.reshape(np.prod(dims),order="F");
+	connect_mat_1_pure[~np.in1d(connect_mat_1_pure,pure_pix)]=0;
+	connect_mat_1_pure = connect_mat_1_pure.reshape(dims,order="F");
 
-	ax1.imshow(connect_mat_1,cmap="jet");
+	ax1.imshow(connect_mat_1_pure,cmap="jet");
 	
 	if text:
 		for ii in range(len(pure_pix)):
-		    pos = np.where(connect_mat_1[:,:] == pure_pix[ii]);
+		    pos = np.where(connect_mat_1_pure[:,:] == pure_pix[ii]);
 		    pos0 = pos[0];
 		    pos1 = pos[1];
 		    ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{np.where(unique_pix==pure_pix[ii])[0][0]}",
@@ -1664,15 +1669,16 @@ def pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brigh
 	
 	ax1 = plt.subplot(3,1,2);
 	dims = connect_mat_1.shape;
-	connect_mat_1 = connect_mat_1.reshape(np.prod(dims),order="F");
-	connect_mat_1[~np.in1d(connect_mat_1,pure_pix)]=0;
-	connect_mat_1 = connect_mat_1.reshape(dims,order="F");
+	connect_mat_1_pure = connect_mat_1.copy();
+	connect_mat_1_pure = connect_mat_1_pure.reshape(np.prod(dims),order="F");
+	connect_mat_1_pure[~np.in1d(connect_mat_1_pure,pure_pix)]=0;
+	connect_mat_1_pure = connect_mat_1_pure.reshape(dims,order="F");
 
-	ax1.imshow(connect_mat_1,cmap="jet");
+	ax1.imshow(connect_mat_1_pure,cmap="jet");
 	
 	if text:
 		for ii in range(len(pure_pix)):
-		    pos = np.where(connect_mat_1[:,:] == pure_pix[ii]);
+		    pos = np.where(connect_mat_1_pure[:,:] == pure_pix[ii]);
 		    pos0 = pos[0];
 		    pos1 = pos[1];
 		    ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank[ii]+1}",
@@ -1695,15 +1701,16 @@ def superpixel_corr_plot(connect_mat_1, pure_pix, Cnt, brightness_rank, text=Fal
 	fig = plt.figure(figsize=(8*scale,16))
 	ax = plt.subplot(2,1,1);
 	dims = connect_mat_1.shape;
-	connect_mat_1 = connect_mat_1.reshape(np.prod(dims),order="F");
-	connect_mat_1[~np.in1d(connect_mat_1,pure_pix)]=0;
-	connect_mat_1 = connect_mat_1.reshape(dims,order="F");
+	connect_mat_1_pure = connect_mat_1.copy();
+	connect_mat_1_pure = connect_mat_1_pure.reshape(np.prod(dims),order="F");
+	connect_mat_1_pure[~np.in1d(connect_mat_1_pure,pure_pix)]=0;
+	connect_mat_1_pure = connect_mat_1_pure.reshape(dims,order="F");
 
-	ax.imshow(connect_mat_1,cmap="jet");	
+	ax.imshow(connect_mat_1_pure,cmap="jet");	
 	
 	if text:
 		for ii in range(len(pure_pix)):
-		    pos = np.where(connect_mat_1[:,:] == pure_pix[ii]);
+		    pos = np.where(connect_mat_1_pure[:,:] == pure_pix[ii]);
 		    if len(pos[0]) > 0:
 		    	pos0 = pos[0];
 		    	pos1 = pos[1];
@@ -2226,5 +2233,3 @@ def sim_noise(dims, noise_source):
 	noise_sim = noise_source[random_indices].reshape(dims,order="F");
 	return noise_sim
 
-
-	
