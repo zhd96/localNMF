@@ -11,3 +11,5 @@ The whole pipeline is:
 4. Successive Projection Algorithm to find pure superpixel.
 5. NMF with temporal traces of pure superpixels as initialization to extract neurons and their activities.
 
+Example Demo_superpixel_pipeline.ipynb <br />
+Dataset from https://github.com/simonsfoundation/CaImAn
