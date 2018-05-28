@@ -1442,7 +1442,7 @@ def superpixel_single_plot(connect_mat_1,unique_pix,brightness_rank_sup,text):
 		    pos1 = pos[1];
 		    ax.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank_sup[ii]+1}",
 		        verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=15)#, fontweight="bold")
-	#ax.set(title="Superpixels")
+	ax.set(title="Superpixels")
 	ax.set_xticks([])
 	ax.set_yticks([])    
 	ax.title.set_fontsize(15)
@@ -1451,7 +1451,7 @@ def superpixel_single_plot(connect_mat_1,unique_pix,brightness_rank_sup,text):
 
 def pure_superpixel_single_plot(connect_mat_1,pure_pix,brightness_rank,text):
 	scale = np.maximum(1, (connect_mat_1.shape[1]/connect_mat_1.shape[0]));
-	fig = plt.figure(figsize=(2*scale,2));
+	fig = plt.figure(figsize=(4*scale,4));
 	ax1 = plt.subplot(1,1,1);
 	dims = connect_mat_1.shape;
 	connect_mat_1_pure = connect_mat_1.copy();
@@ -1468,11 +1468,12 @@ def pure_superpixel_single_plot(connect_mat_1,pure_pix,brightness_rank,text):
 		    pos1 = pos[1];
 		    ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank[ii]+1}",
 		        verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=15)#, fontweight="bold")
-	#ax1.set(title="Pure superpixels")
+	ax1.set(title="Pure superpixels")
 	ax1.title.set_fontsize(15)
 	ax1.title.set_fontweight("bold");
-	ax1.set_xticks([])
-	ax1.set_yticks([])    
+	plt.tight_layout();
+	#ax1.set_xticks([])
+	#ax1.set_yticks([])    
 	return fig   
 
 def pure_superpixel_corr_compare_plot(connect_mat_1, unique_pix, pure_pix, brightness_rank_sup, brightness_rank, Cnt, text=False):
@@ -1629,10 +1630,10 @@ def spatial_sum_plot_single(a_fin, patch_size, num_list_fin=None, text=False):
 			temp = a_fin[:,ii].reshape(patch_size,order="F");
 			pos0 = np.where(temp == temp.max())[0][0];
 			pos1 = np.where(temp == temp.max())[1][0];
-			ax.text(pos1, pos0, f"{num_list_fin[ii]+1}", verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=20, fontweight="bold")
+			ax.text(pos1, pos0, f"{num_list_fin[ii]+1}", verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=15)
 	
 	ax.set(title="Cumulative spatial components")
-	ax.title.set_fontsize(20)
+	ax.title.set_fontsize(15)
 	ax.title.set_fontweight("bold")
 
 	plt.tight_layout();
