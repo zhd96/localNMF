@@ -1086,6 +1086,88 @@ def l1_tf(y, sigma):
 def axon_pipeline(Yd, U, V, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,1], pass_num=1, residual_cut = [0.6,0.6],
 					corr_th_fix=0.31, max_allow_neuron_size=0.3, merge_corr_thr=0.6, merge_overlap_thr=0.6, num_plane=1, patch_size=[100,100],
 					plot_en=False, TF=False, fudge_factor=1, text=True, bg=False, max_iter=35, max_iter_fin=50, update_after=4):
+	"""
+	-------------------------------------------------
+	This function is the entire demixing pipeline for low rank data Yd, which can be decomposed as U*V.
+
+	Parameters:
+
+	*** input data: ***
+	Yd: 3D np.ndarray, shape: d1 x d2 x T
+		input movie
+	U: 2D np.ndarray, shape: (d1 x d2) x r
+		low rank decomposition of Yd (rank r)
+	V: 2D np.ndarray, shape: T x r
+		low rank decomposition of Yd (rank r)
+	*************************************************
+	*** parameters for superpixel initialization: ***
+	cut_off_point: list, length = number of pass
+		correlation threshold for finding superpixels
+	length_cut: list, length = number of pass
+		size cut-off for finding superpixels
+	th: list, length = number of pass
+		MAD threshold for soft-thresholding Yd
+	pass_num: integer
+		number of pass
+	residual_cut: list, length = number of pass
+		sqrt(1 - r_sqare of SPA)
+		this usually set to 0.6, that is to say, r_square of SPA is 0.8
+	bg: boolean
+		having fluctuate background or not
+	num_plane: integer
+		if num_plane > 1: then it's 3D data; Yd should be reshaped as Yd.reshape(dims[0],dims[1]*num_plane, -1, order="F")
+	patch_size: list, length = 2
+		small patch size used to find pure superpixels, usually set to [100,100]. If d1 (or d2) is smaller than 100, then the patch size will automatically adjust to [d1 (or d2),100]
+	**************************************************
+	*** parameters for local NMF: ***
+	corr_th_fix: float
+		correlation threshold for updating spatial support, i.e. supp(ai) = corr(Yd, ci) > corr_th_fix
+	max_allow_neuron_size: float
+		max allowed max_i supp(ai) / (d1 x d2).  
+		If neuron i exceed this range, then when updating spatial support of ai, corr_th_fix will automatically increase 0.1; and will print("corr too low!") on screen.
+		If there're too many corr too low on screen, you should consider increasing corr_th_fix.
+	merge_corr_thr: float
+		correlation threshold for truncating corr(Yd, ci) when merging
+	merge_overlap_thr: float
+		overlapped threshold for truncated correlation images (corr(Yd, ci)) when merging
+	max_iter_fin: integer
+		iteraltion times for final pass
+	max_iter: integer
+		iteration times for pre-final pass if you use multiple passes.
+	update_after: integer
+		merge and update spatial support every 'update_after' iterations
+	**************************************************
+	*** parameters for l1_TF on temporal components after local NMF (optional): ***
+	TF: boolean
+		if True, then run l1_TF on temporal components after local NMF
+	fudge_factor: float, usually set to 1
+		do l1_TF up to fudge_factor*noise level i.e. 
+		min_ci' |ci'|_1 s.t. |ci' - ci|_F <= fudge_factor*sigma_i\sqrt(T)
+	**************************************************
+	*** parameters for plot: ***
+	plot_en: boolean
+		if True, then will plot superpixels, pure superpixels, local corr image, and merge procedure
+	text: boolean
+		if True, then will add numbers on each superpixels.
+	--------------------------------------------------
+	Output:
+	
+	If multiple passes: return {'rlt':rlt, 'fin_rlt':fin_rlt, "superpixel_rlt":superpixel_rlt}
+	- rlt is a dictionary containing results for first pass: {'a', 'c', 'b', "fb", "ff" (if having fluctuate background, otherwise is null), 
+											'res' (residual for NMF iterations, 0 in current code since not calculate it), 'corr_img_all_r'(correlation images), 
+											'num_list' (current component corresponds to which superpixel)}.
+	
+	- fin_rlt is a dictionary containing results for final pass: {'a', 'c', 'c_tf'(if apply TF, otherwise is null), b', "fb", "ff" (if having fluctuate background, otherwise is null), 
+											'res' (residual for NMF iterations, 0 in current code since not calculate it), 
+											'corr_img_all_r'(correlation images), 'num_list' (current component corresponds to which superpixel)}.
+	
+	- superpixel_rlt is a list (length = number of pass) containing pure superpixel information for each pass (this result is mainly for plot):
+	each element of this list is a dictionary containing {'connect_mat_1'(matrix containing all the superpixels, different number represents different superpixels), 
+															'pure_pix'(numbers for pure superpixels), 'brightness_rank'(brightness rank of each pure superpixel)}
+	You can use function 'pure_superpixel_single_plot' to plot these pure superpixels.
+	
+	If only one pass: return {'fin_rlt':fin_rlt, "superpixel_rlt":superpixel_rlt}, details are same as above.
+	"""
 	dims = Yd.shape[:2];
 	T = Yd.shape[2];
 
@@ -1235,6 +1317,33 @@ def axon_pipeline(Yd, U, V, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,
 		return {'fin_rlt':fin_rlt, "superpixel_rlt":superpixel_rlt}
 
 def extract_pure_and_superpixels(Yd, cut_off_point=0.95, length_cut=15, th=2, residual_cut = 0.6, num_plane=1, patch_size=[100,100], plot_en=False, text=False):
+	"""
+	This function is only doing the superpixel initialization.
+	For parameters, please refer to axon_pipeline function.
+
+	Output:
+	a_ini: 2D np.ndarray (d1xd2) x K, K is number of pure superpixels 
+		spatial initialization for each pure superpixel in order of brightness
+	c_ini: 2D np.ndarray (d1xd2) x T, K is number of pure superpixels 
+		temporal initialization for each pure superpixel in order of brightness
+	permute_col: list
+		all the random numbers used for superpixels
+	connect_mat_1: 2D np.ndarray d1 x d2
+		matrix containing all the superpixels, different number represents different superpixels 
+	unique_pix: list
+		numbers for superpixels (actually unique_pix are all the unique numbers in connect_mat_1 except 0; unique_pix is also an increasingly ordered version of permute_col)
+	brightness_rank_sup: list
+		brightness rank of superpixels 
+	pure_pix: list 
+		numbers for pure superpixels
+	brightness_rank: list
+		brightness rank of pure superpixels 
+	Cnt: 2D np.ndarray d1 x d2
+		local correlation image
+
+	You can refer to function 'pure_superpixel_corr_compare_plot' to plot superpixels and pure superpixels.
+
+	"""
 	## if data has negative values then do pixel-wise minimum subtraction ##
 	Yd_min = Yd.min();
 	if Yd_min < 0:
@@ -1295,7 +1404,7 @@ def extract_pure_and_superpixels(Yd, cut_off_point=0.95, length_cut=15, th=2, re
 		Yd += Yd_min_pw;
 	return a_ini, c_ini, permute_col, connect_mat_1, unique_pix, brightness_rank_sup, pure_pix, brightness_rank, Cnt
 
-##################################################### plot functions ##############################################
+##################################################### plot functions ############################################################################
 #################################################################################################################################################
 
 def match_comp(rlt, rlt_lasso_Ydc, rlt_lasso_Yrawc, rlt_a, rlt_lasso_Yda, rlt_lasso_Yrawa,th):
@@ -2238,6 +2347,10 @@ def axon_pipeline_Y(Yd, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,1], 
 					corr_th_fix=0.31, max_allow_neuron_size=0.3, merge_corr_thr=0.6, merge_overlap_thr=0.6, num_plane=1, patch_size=[100,100],
 					plot_en=False, TF=False, fudge_factor=1, text=True, bg=False, max_iter=35, max_iter_fin=50, 
 					update_after=4):
+	"""
+	This function is the demixing pipeline for whole data.
+	For parameters and output, please refer to axon_pipeline function (demixing pipeline for low rank data).
+	"""
 	## if data has negative values then do pixel-wise minimum subtraction ##
 	Yd_min = Yd.min();
 	if Yd_min < 0:
