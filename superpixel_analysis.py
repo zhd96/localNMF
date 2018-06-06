@@ -246,7 +246,7 @@ def find_superpixel(Yt, cut_off_point, length_cut, eight_neighbours=True):
 		illustrate position of each superpixel.  
 		Each superpixel has a random number "indicator".  Same number means same superpixel.
 
-	idx-1: double scalar
+	idx: double scalar
 		number of superpixels
 	
 	comps: list, length = number of superpixels
@@ -308,7 +308,7 @@ def find_superpixel(Yt, cut_off_point, length_cut, eight_neighbours=True):
 	comps=list(nx.connected_components(G))
 	
 	connect_mat=np.zeros(np.prod(dims[:2]));
-	idx=1;
+	idx=0;
 	for comp in comps:
 		if(len(comp) > length_cut):
 			idx = idx+1;
@@ -321,7 +321,7 @@ def find_superpixel(Yt, cut_off_point, length_cut, eight_neighbours=True):
 			connect_mat[list(comp)] = permute_col[ii];
 			ii = ii+1;
 	connect_mat_1 = connect_mat.reshape(dims[0],dims[1],order='F');
-	return connect_mat_1, idx-1, comps, permute_col
+	return connect_mat_1, idx, comps, permute_col
 
 def find_superpixel_3d(Yt, num_plane, cut_off_point, length_cut, eight_neighbours=True):
 	"""
@@ -346,7 +346,7 @@ def find_superpixel_3d(Yt, num_plane, cut_off_point, length_cut, eight_neighbour
 		illustrate position of each superpixel.  
 		Each superpixel has a random number "indicator".  Same number means same superpixel.
 
-	idx-1: double scalar
+	idx: double scalar
 		number of superpixels
 	
 	comps: list, length = number of superpixels
@@ -414,7 +414,7 @@ def find_superpixel_3d(Yt, num_plane, cut_off_point, length_cut, eight_neighbour
 	comps=list(nx.connected_components(G))
 	
 	connect_mat=np.zeros(np.prod(dims[:-1]));
-	idx=1;
+	idx=0;
 	for comp in comps:
 		if(len(comp) > length_cut):
 			idx = idx+1;
@@ -427,7 +427,7 @@ def find_superpixel_3d(Yt, num_plane, cut_off_point, length_cut, eight_neighbour
 			connect_mat[list(comp)] = permute_col[ii];
 			ii = ii+1;
 	connect_mat_1 = connect_mat.reshape(Yt.shape[:-1],order='F');
-	return connect_mat_1, idx-1, comps, permute_col
+	return connect_mat_1, idx, comps, permute_col
 
 def spatial_temporal_ini(Yt, comps, idx, length_cut, bg=False):
 	"""
