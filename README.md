@@ -1,8 +1,6 @@
 # Axon pipeline
 
-google document link for pipeline description: 
-
-https://docs.google.com/document/d/1JqlBa7MC1HkmQwjjfPoqvRaoGOrCHntj0WR4-HjLo8c/edit?ts=5a71e6c7
+Reference: https://www.biorxiv.org/content/early/2018/06/03/334706
 
 The whole pipeline is:
 1. Threshold data to increase SNR.
@@ -13,3 +11,4 @@ The whole pipeline is:
 
 Example Demo_superpixel_pipeline.ipynb <br />
 Dataset from https://github.com/simonsfoundation/CaImAn
+Recommend running PMD first and using the default parameters in axon_pipeline function. Note that parameters in demo have been tuned to adapt to the example data.
