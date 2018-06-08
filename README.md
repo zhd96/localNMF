@@ -10,5 +10,5 @@ The whole pipeline is:
 5. NMF with temporal traces of pure superpixels as initialization to extract neurons and their activities.
 
 Example Demo_superpixel_pipeline.ipynb <br />
-Dataset from https://github.com/simonsfoundation/CaImAn
+Dataset from https://github.com/simonsfoundation/CaImAn <br />
 Recommend running PMD first and using the default parameters in axon_pipeline function. Note that parameters in demo have been tuned to adapt to the example data.
