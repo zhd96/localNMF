@@ -1274,7 +1274,7 @@ def axon_pipeline(Yd, U, V, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,
 										corr_th_fix, maxiter=maxiter, tol=1e-8, update_after=update_after,
 										merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr, num_plane=num_plane, plot_en=plot_en, max_allow_neuron_size=max_allow_neuron_size);
 		print(time.time()-start_time);
-		superpixel_rlt.append({'connect_mat_1':connect_mat_1, 'pure_pix':pure_pix, 'brightness_rank':brightness_rank});
+		superpixel_rlt.append({'connect_mat_1':connect_mat_1, 'pure_pix':pure_pix, 'unique_pix':unique_pix, 'brightness_rank':brightness_rank, 'brightness_rank_sup':brightness_rank_sup});
 		if pass_num > 1 and ii == 0:
 			rlt = {'a':a, 'c':c, 'b':b, "fb":fb, "ff":ff, 'res':res, 'corr_img_all_r':corr_img_all_r, 'num_list':num_list};
 			a0 = a.copy();
@@ -1558,7 +1558,7 @@ def superpixel_single_plot(connect_mat_1,unique_pix,brightness_rank_sup,text):
 	ax.title.set_fontweight("bold")
 	return fig
 
-def pure_superpixel_single_plot(connect_mat_1,pure_pix,brightness_rank,text):
+def pure_superpixel_single_plot(connect_mat_1,pure_pix,brightness_rank,text,pure=True):
 	scale = np.maximum(1, (connect_mat_1.shape[1]/connect_mat_1.shape[0]));
 	fig = plt.figure(figsize=(4*scale,4));
 	ax1 = plt.subplot(1,1,1);
@@ -1572,12 +1572,15 @@ def pure_superpixel_single_plot(connect_mat_1,pure_pix,brightness_rank,text):
 	
 	if text:
 		for ii in range(len(pure_pix)):
-		    pos = np.where(connect_mat_1_pure[:,:] == pure_pix[ii]);
-		    pos0 = pos[0];
-		    pos1 = pos[1];
-		    ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank[ii]+1}",
-		        verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=15)#, fontweight="bold")
-	ax1.set(title="Pure superpixels")
+			pos = np.where(connect_mat_1_pure[:,:] == pure_pix[ii]);
+			pos0 = pos[0];
+			pos1 = pos[1];
+			ax1.text((pos1)[np.array(len(pos1)/3,dtype=int)], (pos0)[np.array(len(pos0)/3,dtype=int)], f"{brightness_rank[ii]+1}",
+				verticalalignment='bottom', horizontalalignment='right',color='black', fontsize=15)#, fontweight="bold")
+	if pure:
+		ax1.set(title="Pure superpixels");
+	else:
+		ax1.set(title="Superpixels");
 	ax1.title.set_fontsize(15)
 	ax1.title.set_fontweight("bold");
 	plt.tight_layout();
@@ -2455,7 +2458,7 @@ def axon_pipeline_Y(Yd, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,1], 
 										corr_th_fix, maxiter=maxiter, tol=1e-8, update_after=update_after,
 										merge_corr_thr=merge_corr_thr,merge_overlap_thr=merge_overlap_thr, num_plane=num_plane, plot_en=plot_en, max_allow_neuron_size=max_allow_neuron_size);
 		print(time.time()-start_time);
-		superpixel_rlt.append({'connect_mat_1':connect_mat_1, 'pure_pix':pure_pix, 'brightness_rank':brightness_rank});
+		superpixel_rlt.append({'connect_mat_1':connect_mat_1, 'pure_pix':pure_pix, 'unique_pix':unique_pix, 'brightness_rank':brightness_rank, 'brightness_rank_sup':brightness_rank_sup});
 		if pass_num > 1 and ii == 0:
 			rlt = {'a':a, 'c':c, 'b':b, "fb":fb, "ff":ff, 'res':res, 'corr_img_all_r':corr_img_all_r, 'num_list':num_list};
 			a0 = a.copy();
