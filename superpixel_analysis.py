@@ -1318,8 +1318,9 @@ def axon_pipeline(Yd, U, V, cut_off_point=[0.95,0.9], length_cut=[15,10], th=[2,
 
 def extract_pure_and_superpixels(Yd, cut_off_point=0.95, length_cut=15, th=2, residual_cut = 0.6, num_plane=1, patch_size=[100,100], plot_en=False, text=False):
 	"""
-	This function is only doing the superpixel initialization.
-	For parameters, please refer to axon_pipeline function.
+	This function is only doing the superpixel initialization for one pass.
+	For parameters meanings, please refer to axon_pipeline function. 
+	However, note that cut_off_point, length_cut, th and residual_cut are float numbers not lists as in axon_pipeline function, because this function could only handle one pass.
 
 	Output:
 	a_ini: 2D np.ndarray (d1xd2) x K, K is number of pure superpixels 

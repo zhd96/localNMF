@@ -14,7 +14,7 @@ See Demo_superpixel_pipeline.ipynb on example data.  This example data is from h
 See more demos on different datasets in other .ipynb files.
 
 ## User guide
-1. Run in python3.
+1. Run in python3.6.
 2. Recommend running PMD then using the default parameters in axon_pipeline function first. Note the parameters in demo have been tuned to adapt to the example data.
 3. Tuning parameters:
 i) See detailed description of each parameters in the comments of axon_pipeline function.
