@@ -752,7 +752,7 @@ def make_mask(corr_img_all_r, corr, mask_a, num_plane=1,times=10,max_allow_neuro
 	return mask_a
 
 def merge_components(a,c,corr_img_all_r,U,V,normalize_factor,num_list,patch_size,merge_corr_thr=0.6,merge_overlap_thr=0.6,plot_en=False):
-	""" want to merge axons apatially overlap very large and temporal correlation moderately large,
+	""" want to merge components whose correlation images are highly overlapped,
 	and update a and c after merge with region constrain
 	Parameters:
 	-----------     
@@ -763,7 +763,9 @@ def merge_components(a,c,corr_img_all_r,U,V,normalize_factor,num_list,patch_size
 	corr_img_all_r: np.ndarray
 		 corr image
 	U, V: low rank decomposition of Y
-	normalize_factor: std of Y
+	normalize_factor: std of 
+	num_list: indices of components
+	patch_size: dimensions for data
 	merge_corr_thr:   scalar between 0 and 1 
 	    temporal correlation threshold for truncating corr image (corr(Y,c)) (default 0.6)
 	merge_overlap_thr: scalar between 0 and 1 
@@ -774,8 +776,10 @@ def merge_components(a,c,corr_img_all_r,U,V,normalize_factor,num_list,patch_size
 	        matrix of merged spatial components (d x K')
 	c_pri:     np.ndarray
 	        matrix of merged temporal components (T x K')
+	corr_pri:	np.ndarray
+			matrix of correlation images for the merged components (d x K')
 	flag: merge or not
-	
+
 	"""
 
 	f = np.ones([c.shape[0],1]);
@@ -2107,7 +2111,7 @@ def ls_solve_acc_Y(X, U, mask=None, beta_LS=None):
 	return beta_LS
 
 def merge_components_Y(a,c,corr_img_all_r,U,normalize_factor,num_list,patch_size,merge_corr_thr=0.5,merge_overlap_thr=0.8,plot_en=False):
-	""" want to merge axons apatially overlap very large and temporal correlation moderately large,
+	""" want to merge components whose correlation images are highly overlapped,
 	and update a and c after merge with region constrain
 	Parameters:
 	-----------     
@@ -2115,16 +2119,24 @@ def merge_components_Y(a,c,corr_img_all_r,U,normalize_factor,num_list,patch_size
 	     matrix of spatial components (d x K)
 	c: np.ndarray
 	     matrix of temporal components (T x K)
+	corr_img_all_r: np.ndarray
+		 corr image
+	U: data
+	normalize_factor: std of U
+	num_list: indices of components
+	patch_size: dimensions for data
 	merge_corr_thr:   scalar between 0 and 1 
-	    temporal correlation threshold for merging (default 0.5)
+	    temporal correlation threshold for truncating corr image (corr(U,c)) (default 0.6)
 	merge_overlap_thr: scalar between 0 and 1 
-	    spatial overlap threshold for merging (default 0.7)
+	    overlap ratio threshold for two corr images (default 0.6)
 	Returns:
 	--------
 	a_pri:     np.ndarray
 	        matrix of merged spatial components (d x K')
 	c_pri:     np.ndarray
 	        matrix of merged temporal components (T x K')
+	corr_pri:	np.ndarray
+			matrix of correlation images for the merged components (d x K')
 	flag: merge or not
 	
 	"""
@@ -2187,7 +2199,9 @@ def merge_components_Y(a,c,corr_img_all_r,U,normalize_factor,num_list,patch_size
 def update_AC_l2_Y(U, normalize_factor, a, c, b, patch_size, corr_th_fix, 
 			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,
 			merge_overlap_thr=0.7, num_plane=1, plot_en=False, max_allow_neuron_size=0.2):
-
+	"""
+	update spatial, temporal, and constant background for whole data
+	"""
 	K = c.shape[1];
 	res = np.zeros(maxiter);
 	uv_mean = U.mean(axis=1,keepdims=True);
@@ -2264,7 +2278,9 @@ def update_AC_bg_l2_Y(U, normalize_factor, a, c, b, ff, fb, patch_size, corr_th_
 			maxiter=50, tol=1e-8, update_after=None,merge_corr_thr=0.5,
 			merge_overlap_thr=0.7, num_plane=1, plot_en=False,
 			max_allow_neuron_size=0.2):
-
+	"""
+	update spatial, temporal, fluctuate background and constant background for whole data
+	"""
 	K = c.shape[1];
 	res = np.zeros(maxiter);
 	uv_mean = U.mean(axis=1,keepdims=True);
