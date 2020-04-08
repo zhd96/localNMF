@@ -1,5 +1,7 @@
 # Superpixelization demixing method
 
+This repo is an early version of https://github.com/paninski-lab/funimag. Check funimag repo for latest code.
+
 ## Description
 The whole pipeline is as follows:
 1. Threshold data to increase SNR.
